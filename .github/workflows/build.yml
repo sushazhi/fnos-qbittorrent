@@ -240,8 +240,8 @@ jobs:
         with:
           name: qBittorrent-${{ matrix.arch }}-fpk
           path: |
-            ${PACKAGE_NAME}
-            ${PACKAGE_NAME}.sha256sum
+            ${{ env.PACKAGE_NAME }}
+            ${{ env.PACKAGE_NAME }}.sha256sum
           retention-days: 30
 
       - name: Commit fpk to repository
