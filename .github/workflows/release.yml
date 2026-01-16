@@ -62,14 +62,14 @@ jobs:
         with:
           pattern: qBittorrent-*-fpk
           path: ./artifacts
-          merge-multiple: false
+          merge-multiple: true
 
       - name: Download SHA256 checksums
         uses: actions/download-artifact@v4
         with:
           pattern: qBittorrent-*-fpk
           path: ./artifacts
-          merge-multiple: false
+          merge-multiple: true
 
       - name: List downloaded artifacts
         run: |
