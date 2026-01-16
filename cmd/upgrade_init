@@ -1,0 +1,12 @@
+#!/bin/bash
+# cmd/upgrade_init - qBittorrent升级初始化脚本
+
+set -e
+
+echo "Upgrading qBittorrent..."
+
+# 升级前的准备工作
+# 备份必要的配置
+
+echo "qBittorrent upgrade initialized"
+exit 0

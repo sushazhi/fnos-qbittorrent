@@ -1,0 +1,12 @@
+#!/bin/bash
+# cmd/upgrade_callback - qBittorrent升级回调脚本
+
+set -e
+
+echo "Completing qBittorrent upgrade..."
+
+# 升级后的清理工作
+# 验证新版本是否正常
+
+echo "qBittorrent upgrade completed"
+exit 0

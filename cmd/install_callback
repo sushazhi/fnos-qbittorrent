@@ -1,0 +1,35 @@
+#!/bin/bash
+# cmd/install_callback - qBittorrent安装后置脚本
+
+set -e
+
+APP_NAME="qbittorrent"
+BIN_DIR="${TRIM_APPDEST}/bin"
+CONFIG_DIR="${TRIM_PKGVAR}/config"
+DATA_DIR="${TRIM_PKGVAR}"
+
+echo "Running ${APP_NAME} install_callback..."
+
+# 设置可执行权限
+chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null || true
+chmod +x "${TRIM_APPDEST}/../cmd/main" 2>/dev/null || true
+
+# 配置目录由 cmd/main 首次启动时创建
+
+echo "=================================="
+echo "qBittorrent installation complete"
+echo "=================================="
+echo ""
+echo "Default credentials:"
+echo "  WebUI: http://$(hostname -I | awk '{print $1}'):8080"
+echo "  Username: admin"
+echo "  Password: adminadmin"
+echo ""
+echo "IMPORTANT: Please change the default password after first login!"
+echo ""
+echo "Data location: $DATA_DIR"
+echo "Config location: $CONFIG_DIR"
+echo ""
+
+echo "qBittorrent installed successfully"
+exit 0

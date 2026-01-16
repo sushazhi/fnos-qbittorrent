@@ -1,0 +1,12 @@
+#!/bin/bash
+# cmd/uninstall_callback - qBittorrent卸载回调脚本
+
+set -e
+
+echo "Cleaning up qBittorrent..."
+
+# 清理临时文件和缓存
+rm -f "${TRIM_PKGTMP}/qbittorrent.pid"
+
+echo "qBittorrent cleanup completed"
+exit 0

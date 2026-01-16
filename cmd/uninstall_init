@@ -1,0 +1,42 @@
+#!/bin/bash
+# cmd/uninstall_init - qBittorrent卸载初始化脚本
+
+set -e
+
+echo "Uninstalling qBittorrent..."
+echo "TRIM_PKGETC=$TRIM_PKGETC"
+echo "TRIM_PKGHOME=$TRIM_PKGHOME"
+echo "TRIM_PKGVAR=$TRIM_PKGVAR"
+
+# 删除配置目录
+CONFIG_DIR="${TRIM_PKGETC}"
+echo "Checking CONFIG_DIR: $CONFIG_DIR"
+if [ -d "$CONFIG_DIR" ]; then
+    echo "Removing configuration directory: $CONFIG_DIR"
+    rm -rf "$CONFIG_DIR"
+else
+    echo "CONFIG_DIR does not exist"
+fi
+
+# 删除数据目录
+DATA_DIR="${TRIM_PKGVAR}"
+echo "Checking DATA_DIR: $DATA_DIR"
+if [ -d "$DATA_DIR" ]; then
+    echo "Removing data directory: $DATA_DIR"
+    rm -rf "$DATA_DIR"
+else
+    echo "DATA_DIR does not exist"
+fi
+
+# 删除 HOME 目录（如果存在）
+HOME_DIR="${TRIM_PKGHOME}"
+echo "Checking HOME_DIR: $HOME_DIR"
+if [ -d "$HOME_DIR" ]; then
+    echo "Removing home directory: $HOME_DIR"
+    rm -rf "$HOME_DIR"
+else
+    echo "HOME_DIR does not exist"
+fi
+
+echo "qBittorrent uninstall initialized"
+exit 0

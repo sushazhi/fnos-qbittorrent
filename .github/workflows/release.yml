@@ -1,0 +1,251 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag version to release (e.g., v4.6.5.1)'
+        required: true
+        default: ''
+      draft:
+        description: 'Create as draft'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: 5.1.4
+  QB_VERSION: "5.1.4"
+  VUETORRENT_VERSION: "v2.31.2"
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Error: Invalid tag format. Expected vX.Y.Z or vX.Y.Z.W"
+            exit 1
+          fi
+
+          VERSION=${TAG#v}
+          echo "TAG=${TAG}" >> $GITHUB_OUTPUT
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Release version: ${VERSION}"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qBittorrent-*-fpk
+          path: ./artifacts
+          merge-multiple: false
+
+      - name: Download SHA256 checksums
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qBittorrent-*-fpk
+          path: ./artifacts
+          merge-multiple: false
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded Artifacts ==="
+          find ./artifacts -type f -ls
+
+      - name: Generate checksums
+        run: |
+          echo "=== Generating SHA256 Checksums ==="
+          cd artifacts
+          sha256sum *.fpk > SHA256SUMS.txt
+          echo "SHA256SUMS.txt:"
+          cat SHA256SUMS.txt
+
+      - name: Create release notes
+        id: release_notes
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          TAG="${{ steps.get_version.outputs.TAG }}"
+
+          cat > release_notes.md << 'EOF'
+          # qBittorrent for fnOS - Release Notes
+
+          ## Version: {VERSION}
+
+          ### Changes
+          See [CHANGELOG](CHANGELOG.md) for details.
+
+          ### Download
+
+          | Architecture | Package | SHA256 |
+          |--------------|---------|--------|
+          | ARM64 | [`qbittorrent-vuetorrent-{VERSION}-arm64.fpk`](https://github.com/${{ github.repository }}/releases/download/{TAG}/qbittorrent-vuetorrent-{VERSION}-arm64.fpk) | See SHA256SUMS.txt |
+
+          ### Installation
+
+          #### Method 1: From GitHub Release
+          1. Download the `.fpk` file
+          2. Install using fnOS App Center or CLI:
+             ```bash
+             appcenter-cli install-local qbittorrent-vuetorrent-{VERSION}-arm64.fpk
+             ```
+
+          #### Method 2: Using wget
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/{TAG}/qbittorrent-vuetorrent-{VERSION}-arm64.fpk
+          appcenter-cli install-local qbittorrent-vuetorrent-{VERSION}-arm64.fpk
+          ```
+
+          ### Verification
+
+          ```bash
+          sha256sum -c SHA256SUMS.txt
+          ```
+
+          ### What's Included
+
+          - qBittorrent-nox {VERSION}
+          - libtorrent-rasterbar 2.0.10
+          - Qt 6.6.3
+          - VueTorrent WebUI {VUETORRENT_VERSION}
+          - fnOS integration scripts
+
+          ### System Requirements
+
+          - fnOS 1.0.0+
+          - Architecture: ARM64
+          - RAM: 512MB minimum
+          - Storage: 100MB minimum
+
+          ### Default Credentials
+
+          - **WebUI URL**: `http://<NAS_IP>:8080`
+          - **Username**: `admin`
+          - **Password**: `adminadmin`
+
+          ⚠️ **Important**: Change the default password immediately after first login!
+
+          ### Support
+
+          - 🐛 [Report Issues](https://github.com/${{ github.repository }}/issues)
+          - 📖 [Documentation](https://developer.fnnas.com/)
+          - 💬 [Community Forum](https://club.fnnas.com/)
+
+          EOF
+
+          # Replace placeholders
+          sed -i "s/{VERSION}/${VERSION}/g" release_notes.md
+          sed -i "s/{TAG}/${TAG}/g" release_notes.md
+          sed -i "s/{VUETORRENT_VERSION}/${VUETORRENT_VERSION}/g" release_notes.md
+          sed -i "s/{ARCH}/<ARCH>/g" release_notes.md
+
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          name: qBittorrent for fnOS v${{ steps.get_version.outputs.VERSION }}
+          body_path: release_notes.md
+          draft: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.draft || 'false' }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease || 'false' }}
+          files: |
+            artifacts/*.fpk
+            artifacts/SHA256SUMS.txt
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Docker Hub description (optional)
+        if: false  # Enable if you publish to Docker Hub
+        run: |
+          echo "Creating Docker Hub description..."
+          # This would typically use a Docker Hub action to update the README
+
+      - name: Update release summary
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## 🎉 Release Created Successfully!
+
+          **Version:** v${{ steps.get_version.outputs.VERSION }}
+          **Tag:** ${{ steps.get_version.outputs.TAG }}
+
+          **Release Assets:**
+          - ARM64: \`qbittorrent-vuetorrent-${{ steps.get_version.outputs.VERSION }}-arm64.fpk\`
+          - Checksums: \`SHA256SUMS.txt\`
+
+          **Draft:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.draft || 'false' }}
+          **Pre-release:** ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease || 'false' }}
+
+          **Release URL:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.TAG }}
+
+          EOF
+
+  notify:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: release
+    if: always()
+
+    steps:
+      - name: Check release status
+        run: |
+          if [ "${{ needs.release.result }}" = "success" ]; then
+            echo "✅ Release created successfully"
+          else
+            echo "❌ Release failed"
+            exit 1
+          fi
+
+      - name: Send notification (Slack)
+        if: false  # Enable and configure Slack webhook
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "qBittorrent for fnOS v${{ steps.get_version.outputs.VERSION }} has been released!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*qBittorrent for fnOS v${{ steps.get_version.outputs.VERSION }}* has been released!\n\n<https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.TAG }}|View Release>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send notification (Discord)
+        if: false  # Enable and configure Discord webhook
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          title: "qBittorrent for fnOS v${{ steps.get_version.outputs.VERSION }} Released"
+          description: "New release available!"
+          url: https://github.com/${{ github.repository }}/releases/tag/${{ steps.get_version.outputs.TAG }}
+          color: 0x00ff00

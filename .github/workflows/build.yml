@@ -1,0 +1,321 @@
+name: Build qBittorrent for fnOS
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+    # No inputs needed, only ARM64 is supported
+
+permissions:
+  contents: write
+
+env:
+  APP_VERSION: 5.1.4
+  QB_VERSION: "5.1.4"
+  VUETORRENT_VERSION: "v2.31.2"
+
+jobs:
+  build:
+    name: Build qBittorrent (Vue UI) - ${{ matrix.arch }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for ARM64 cross-compilation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Install qemu-user-static
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user-static
+
+      - name: Download qBittorrent ARM64 static binary from userdocs
+        run: |
+          DOWNLOAD_ARCH="aarch64"
+          STATIC_RELEASE="release-5.1.4_v2.0.11"
+          STATIC_URL="https://github.com/userdocs/qbittorrent-nox-static/releases/download/${STATIC_RELEASE}/${DOWNLOAD_ARCH}-qbittorrent-nox"
+
+          echo "Downloading qbittorrent-nox ${STATIC_RELEASE} for ${DOWNLOAD_ARCH}..."
+          echo "URL: ${STATIC_URL}"
+          wget -v "${STATIC_URL}" -O qbittorrent-nox
+          chmod +x qbittorrent-nox
+
+          echo "Verifying binary..."
+          file qbittorrent-nox
+
+          # Use qemu to run ARM64 binary on x86_64 CI
+          echo "Checking binary version (using qemu)..."
+          qemu-aarch64-static ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
+
+      - name: Download and prepare WebUI with VueTorrent
+        run: |
+          echo "=== Download WebUI with VueTorrent ==="
+          
+          # Download native qBittorrent WebUI
+          echo "Downloading qBittorrent ${QB_VERSION} source..."
+          wget -q "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-${QB_VERSION}.tar.gz" -O qb-${QB_VERSION}.tar.gz
+
+          if [ ! -s qb-${QB_VERSION}.tar.gz ]; then
+            echo "ERROR: Failed to download qBittorrent source"
+            exit 1
+          fi
+
+          echo "Extracting source..."
+          tar xf qb-${QB_VERSION}.tar.gz
+
+          echo "Checking WebUI www directory..."
+          if [ ! -d "qBittorrent-release-${QB_VERSION}/src/webui/www" ]; then
+            echo "ERROR: WebUI www directory not found"
+            exit 1
+          fi
+
+          # Download VueTorrent
+          echo "Downloading VueTorrent ${VUETORRENT_VERSION}..."
+          VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/download/${VUETORRENT_VERSION}/vuetorrent.zip"
+          wget -q "$VUETORRENT_URL" -O vuetorrent.zip
+          
+          if [ ! -s vuetorrent.zip ]; then
+            echo "ERROR: Failed to download VueTorrent"
+            exit 1
+          fi
+          
+          echo "Extracting VueTorrent..."
+          unzip -q vuetorrent.zip
+
+          # Copy native WebUI to app/ui/www
+          mkdir -p app/ui/www
+          cp -r "qBittorrent-release-${QB_VERSION}/src/webui/www/"* app/ui/www/
+
+          # Copy VueTorrent files to alternative WebUI directory
+          echo "Setting up VueTorrent as alternative WebUI..."
+          mkdir -p app/ui/vuetorrent/public
+          if [ -d "vuetorrent/public" ]; then
+            cp -r vuetorrent/* app/ui/vuetorrent/
+            # Remove unnecessary folders
+            rm -rf app/ui/vuetorrent/screenshots
+            # Set proper permissions
+            chmod -R a+r app/ui/vuetorrent/
+          else
+            echo "ERROR: VueTorrent directory not found"
+            exit 1
+          fi
+
+          echo "WebUI files:"
+          ls -la app/ui/www/ | head -5
+          echo "VueTorrent files:"
+          ls -la app/ui/vuetorrent/ | head -5
+
+          # Cleanup
+          rm -rf qb-${QB_VERSION}.tar.gz "qBittorrent-release-${QB_VERSION}" vuetorrent vuetorrent.zip
+
+      - name: Prepare app structure
+        run: |
+          echo "=== Prepare app structure ==="
+
+          # Verify qbittorrent binary exists
+          if [ ! -f qbittorrent-nox ]; then
+            echo "ERROR: qbittorrent binary not found!"
+            exit 1
+          fi
+          echo "Binary size: $(ls -lh qbittorrent-nox | awk '{print $5}')"
+
+          # Verify app/ui directories
+          if [ ! -d app/ui/www ] || [ -z "$(ls -A app/ui/www/ 2>/dev/null)" ]; then
+            echo "ERROR: app/ui/www directory is empty or not found!"
+            exit 1
+          fi
+          if [ ! -d app/ui/vuetorrent ] || [ -z "$(ls -A app/ui/vuetorrent 2>/dev/null)" ]; then
+            echo "ERROR: app/ui/vuetorrent directory is empty or not found!"
+            exit 1
+          fi
+
+          # Create directories
+          mkdir -p app/bin app/ui cmd config wizard
+
+          # Copy binary
+          echo "Copying binary to app/bin/..."
+          cp qbittorrent-nox app/bin/
+          chmod +x app/bin/qbittorrent-nox
+
+          # Copy UI config (config-vuetorrent -> config, or just use existing config)
+          if [ -f app/ui/config-vuetorrent ]; then
+            cp app/ui/config-vuetorrent app/ui/config
+          fi
+
+          echo "=== Verification ==="
+          echo "Binary: $(ls -lh app/bin/qbittorrent-nox | awk '{print $5}')"
+          echo "Native WebUI files: $(ls -1 app/ui/www/ 2>/dev/null | wc -l)"
+          echo "VueTorrent files: $(ls -1 app/ui/vuetorrent/ 2>/dev/null | wc -l)"
+          ls -la app/bin/
+          ls -laR app/ui/ | head -20
+
+      - name: Verify complete structure
+        run: |
+          echo "=== Complete project root structure ==="
+          find . -maxdepth 2 -type f -o -type d | grep -E "^\./(manifest|ICON|LICENSE|README|app|cmd|config|wizard)" | sort
+
+          echo ""
+          echo "=== app/ directory contents ==="
+          ls -laR app/ 2>/dev/null || echo "app/ not found"
+
+          echo ""
+          echo "=== Root level files ==="
+          ls -la manifest ICON* LICENSE README.md 2>/dev/null || true
+
+          echo ""
+          echo "=== Binary verification ==="
+          file app/bin/qbittorrent-nox
+          ls -lh app/bin/qbittorrent-nox
+
+      - name: Create .fpk package
+        run: |
+          echo "=== Create .fpk package ==="
+
+          # Download fnpack
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.0-linux-amd64"
+          wget -q "$FNPACK_URL" -O fnpack
+          chmod +x fnpack
+
+          echo "Running fnpack..."
+          ls -la
+          echo ""
+
+          # Verify required files exist
+          echo "Verifying required files..."
+          for file in manifest ICON.PNG ICON_256.PNG LICENSE README.md app cmd config wizard; do
+            if [ ! -e "$file" ]; then
+              echo "ERROR: Required file/directory '$file' not found!"
+              exit 1
+            fi
+            echo "  ✓ $file"
+          done
+
+          echo ""
+          echo "app/ structure:"
+          ls -laR app/
+
+          echo ""
+          echo "Running fnpack build..."
+          ./fnpack build .
+
+          echo ""
+          echo "Verifying output..."
+          if [ ! -f qbittorrent.fpk ]; then
+            echo "ERROR: fnpack did not generate qbittorrent.fpk"
+            ls -la *.fpk 2>/dev/null || echo "No .fpk files found"
+            exit 1
+          fi
+
+          # Set package name
+          PACKAGE_NAME="qbittorrent-vuetorrent-${APP_VERSION}-${{ matrix.arch }}.fpk"
+          mv qbittorrent.fpk "${PACKAGE_NAME}"
+
+          echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+          echo "Created package: ${PACKAGE_NAME}"
+
+          echo "=== Package file info ==="
+          ls -lh "${PACKAGE_NAME}"
+          echo ""
+          echo "=== Verifying package contents (tar.gz format) ==="
+          tar -tzf "${PACKAGE_NAME}" | head -30
+
+      - name: Create SHA256 checksums
+        run: |
+          sha256sum "${PACKAGE_NAME}" > "${PACKAGE_NAME}.sha256sum"
+          cat "${PACKAGE_NAME}.sha256sum"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qBittorrent-${{ matrix.arch }}-fpk
+          path: |
+            ${PACKAGE_NAME}
+            ${PACKAGE_NAME}.sha256sum
+          retention-days: 30
+
+      - name: Commit fpk to repository
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Fetch latest changes first
+          git fetch origin main
+          
+          # Copy fpk files to artifacts directory
+          mkdir -p artifacts
+          cp "${PACKAGE_NAME}" artifacts/
+          cp "${PACKAGE_NAME}.sha256sum" artifacts/
+          
+          # Add and commit (force add to override .gitignore)
+          git add -f artifacts/
+          git merge --no-edit origin/main || true
+          git commit -m "ci: add build artifact ${PACKAGE_NAME}
+
+          Built from: ${{ github.sha }}
+          Date: $(date -u +%Y-%m-%d)
+
+          [skip ci]"
+
+          # Push to repository
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload binary for debugging
+        uses: actions/upload-artifact@v4
+        with:
+          name: qBittorrent-nox-${{ matrix.arch }}
+          path: qbittorrent-nox
+          retention-days: 7
+
+      - name: Build summary
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ## ✅ Build Summary - arm64 (Static)
+
+          **Version:** ${{ env.APP_VERSION }}
+          **Architecture:** arm64
+          **Platform:** arm
+          **Build Type:** userdocs static (musl libc)
+          **qBittorrent Version:** ${{ env.QB_VERSION }}
+          **VueTorrent Version:** ${{ env.VUETORRENT_VERSION }}
+
+          **Git Info:**
+          - Commit: \`${{ github.sha }}\`
+          - Branch: \`${{ github.ref_name }}\`
+          - Triggered by: ${{ github.event_name }}
+
+          **Build Artifacts:**
+          - Package: \`${PACKAGE_NAME}\`
+          - Binary: \`qBittorrent-nox\` (static, musl)
+
+          **Binary Information:**
+          ```
+          $(file app/bin/qbittorrent-nox)
+          Size: $(ls -lh app/bin/qbittorrent-nox | awk '{print $5}')
+          ```
+          EOF
+
+      - name: Release artifacts (for tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            qbittorrent-${APP_VERSION}-arm64.fpk
+            qbittorrent-${APP_VERSION}-arm64.fpk.sha256sum
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,210 @@
+#!/bin/bash
+# cmd/main - qBittorrent应用生命周期管理脚本
+
+set -e
+
+APP_NAME="qbittorrent"
+BIN_DIR="${TRIM_APPDEST}/bin"
+DATA_DIR="${TRIM_PKGVAR}"
+CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
+PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
+
+# 端口配置
+if [ -n "$TRIM_SERVICE_PORT" ]; then
+    WEBUI_PORT="$TRIM_SERVICE_PORT"
+else
+    WEBUI_PORT=8080
+fi
+
+# 检查环境变量
+if [ -z "$TRIM_APPDEST" ]; then
+    echo "Error: TRIM_APPDEST not set. This script must be run from fnOS app environment."
+    exit 1
+fi
+
+start() {
+    # 检查是否已运行
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            echo "${APP_NAME} is already running (PID: $PID)"
+            return 1
+        fi
+        # PID文件存在但进程不存在，清理
+        rm -f "$PID_FILE"
+    fi
+
+    # 创建必要的目录
+    mkdir -p "$(dirname "$PID_FILE")"
+
+    # 设置环境变量
+    export QT_QPA_PLATFORM=offscreen
+    # 静态二进制不需要 LD_LIBRARY_PATH
+
+    # 检查可执行文件
+    if [ ! -x "$BIN_DIR/qbittorrent-nox" ]; then
+        echo "Error: qbittorrent-nox not found or not executable at $BIN_DIR/qbittorrent-nox"
+        return 1
+    fi
+
+    # 创建配置目录（qBittorrent会从 profile/qBittorrent/config/qBittorrent.conf 读取）
+    mkdir -p "${DATA_DIR}/qBittorrent/config"
+
+    # 只在配置文件不存在时创建默认配置
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Creating default configuration..."
+
+        cat > "$CONFIG_FILE" << 'EOF'
+[Preferences]
+General\Locale=zh_CN
+Downloads\SavePath=/vol1/1000/downloads/
+Downloads\TempPath=/vol1/1000/temp/
+WebUI\Address=*
+WebUI\Port=8080
+WebUI\LocalHostAuth=true
+WebUI\Username=admin
+WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\ClickjackingProtection=false
+WebUI\CSRFProtection=false
+WebUI\AlternativeUIEnabled=true
+WebUI\RootFolder=__VUETORRENT_ROOT__
+EOF
+        # 替换为实际路径
+        sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE"
+        echo "Default configuration created at $CONFIG_FILE"
+    else
+        echo "Using existing configuration: $CONFIG_FILE"
+    fi
+
+    echo "=== qBittorrent binary info ==="
+    file "$BIN_DIR/qbittorrent-nox"
+    "$BIN_DIR/qbittorrent-nox" --version 2>&1 || true
+    echo ""
+
+    echo "WebUI Port: $WEBUI_PORT"
+
+    echo "=== Environment ==="
+    echo "TRIM_APPDEST=$TRIM_APPDEST"
+    echo "TRIM_PKGETC=$TRIM_PKGETC"
+    echo "TRIM_PKGVAR=$TRIM_PKGVAR"
+    echo "TRIM_PKGHOME=$TRIM_PKGHOME"
+    echo "TRIM_PKGTMP=$TRIM_PKGTMP"
+    echo "DATA_DIR=$DATA_DIR"
+    echo "PROFILE_DIR=$PROFILE_DIR"
+    echo "CONFIG_DIR=$CONFIG_DIR"
+    echo "WEBUI_PORT=$WEBUI_PORT"
+    echo ""
+
+    # 启动qBittorrent-nox
+    echo "Starting qBittorrent..."
+    "$BIN_DIR/qbittorrent-nox" \
+        --profile="${DATA_DIR}" \
+        --webui-port="$WEBUI_PORT" \
+        >> "$LOG_FILE" 2>&1 &
+
+    PID=$!
+    echo $PID > "$PID_FILE"
+
+    # 等待确认进程启动
+    sleep 3
+    if ps -p "$PID" > /dev/null 2>&1; then
+        echo "${APP_NAME} started successfully (PID: $PID)"
+        echo "WebUI: http://$(hostname -I | awk '{print $1}'):${WEBUI_PORT}"
+        return 0
+    else
+        echo "Error: ${APP_NAME} failed to start."
+        echo ""
+        echo "=== Last 20 lines of log ==="
+        if [ -f "$LOG_FILE" ]; then
+            tail -20 "$LOG_FILE"
+        else
+            echo "Log file not found: $LOG_FILE"
+        fi
+        rm -f "$PID_FILE"
+        return 1
+    fi
+}
+
+stop() {
+    if [ ! -f "$PID_FILE" ]; then
+        echo "${APP_NAME} is not running"
+        return 1
+    fi
+
+    PID=$(cat "$PID_FILE")
+
+    # 检查进程是否存在
+    if ! ps -p "$PID" > /dev/null 2>&1; then
+        echo "${APP_NAME} process not found (PID: $PID)"
+        rm -f "$PID_FILE"
+        return 1
+    fi
+
+    echo "Stopping ${APP_NAME} (PID: $PID)..."
+    kill "$PID" 2>/dev/null || true
+
+    # 等待进程结束（最多30秒）
+    TIMEOUT=30
+    while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
+        sleep 1
+        TIMEOUT=$((TIMEOUT - 1))
+    done
+
+    # 强制终止如果还在运行
+    if ps -p "$PID" > /dev/null 2>&1; then
+        echo "Process still running, forcing kill..."
+        kill -9 "$PID" 2>/dev/null || true
+        sleep 1
+    fi
+
+    rm -f "$PID_FILE"
+    echo "${APP_NAME} stopped"
+    return 0
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            echo "${APP_NAME} is running (PID: $PID)"
+            # 显示进程信息
+            ps -p "$PID" -o pid,pcpu,pmem,etime,cmd
+            return 0
+        fi
+    fi
+    echo "${APP_NAME} is not running"
+    return 1
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        echo ""
+        echo "Environment Variables:"
+        echo "  TRIM_APPDEST=$TRIM_APPDEST"
+        echo "  TRIM_PKGETC=$TRIM_PKGETC"
+        echo "  TRIM_PKGVAR=$TRIM_PKGVAR"
+        echo "  TRIM_PKGHOME=$TRIM_PKGHOME"
+        echo "  TRIM_PKGTMP=$TRIM_PKGTMP"
+        exit 1
+        ;;
+esac
