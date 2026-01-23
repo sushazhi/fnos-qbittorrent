@@ -44,22 +44,13 @@ npm run clean            # Remove build artifacts (app/src/build)
 - **Use** `echo "message"` for user output (English for errors, Chinese for info)
 - **Functions**: Named with underscores, contain Chinese comments
 
-Example structure:
+Example:
 ```bash
 #!/bin/bash
-# cmd/main - Application lifecycle management script
-
+# cmd/main - qBittorrent应用生命周期管理脚本
 set -e
-
 APP_NAME="qbittorrent"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
-
-start() {
-    # 检查是否已运行
-    if [ -f "$PID_FILE" ]; then
-        ...
-    fi
-}
 ```
 
 ### Error Handling
@@ -114,9 +105,8 @@ Always use fnOS provided environment variables:
 
 ## Common Patterns
 
-### Process Management (from cmd/main)
 ```bash
-# Check running process
+# Process check with PID file
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
     if ps -p "$PID" > /dev/null 2>&1; then
@@ -124,41 +114,24 @@ if [ -f "$PID_FILE" ]; then
         return 0
     fi
 fi
-```
 
-### Graceful Shutdown with Timeout
-```bash
+# Graceful shutdown with timeout
 TIMEOUT=30
 while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
     sleep 1
     TIMEOUT=$((TIMEOUT - 1))
 done
-```
 
-### Case Statement for CLI Args
-```bash
+# CLI args with case statement
 case "$1" in
-    start)
-        start
-        ;;
-    stop)
-        stop
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|status}"
-        exit 1
-        ;;
+    start|stop|restart|status) $1 ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
 esac
 ```
 
 ## Testing
 
-No automated test framework exists. Manual testing via:
-
-1. **ShellCheck**: `npm run lint:shell`
-2. **JSON validation**: `npm run lint:json`
-3. **Manifest checks**: `npm run lint:manifest`
-4. **Full lint**: `npm run lint`
+No automated test framework exists. Manual testing: `npm run lint` (runs shellcheck, json validation, manifest checks).
 
 ## Key Files Reference
 
@@ -166,6 +139,19 @@ No automated test framework exists. Manual testing via:
 |------|---------|
 | `cmd/main` | Start/stop/restart/status control |
 | `cmd/install_init` | Installation initialization |
+| `cmd/install_callback` | Post-install actions |
+| `cmd/uninstall_init` | Uninstall initialization |
+| `cmd/config_callback` | Configuration changes |
 | `manifest` | Package metadata (key-value format) |
 | `config/privilege` | App privilege configuration |
 | `config/resource` | App resource configuration |
+| `diagnose.sh` | Diagnostic script for troubleshooting |
+
+## Important Notes
+
+- **No test framework**: Run `npm run lint` before committing
+- **Static binary**: qBittorrent-nox pre-compiled, no LD_LIBRARY_PATH needed
+- **WebUI dual-mode**: VueTorrent (default) and native UI, switchable via config
+- **ARM64 only**: Currently ARM64 only
+- **Port 8080**: Hardcoded, not configurable at runtime
+- **Config location**: `${TRIM_PKGVAR}/qBittorrent/config/qBittorrent.conf`
