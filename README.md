@@ -1,0 +1,93 @@
+# qBittorrent for fnOS 🚀
+
+一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
+
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4-blue?style=flat-square&logo=qbittorrent)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.2-purple?style=flat-square&logo=vue.js)
+![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
+![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
+
+---
+
+## ✨ 特色功能
+
+| 功能 | 说明 |
+|------|------|
+| 🎯 **双WebUI** | 默认启用VueTorrent现代界面，可切换原生界面 |
+| 📡 **完整BT协议** | 支持BitTorrent v1/v2，DHT/PEX/LSD P2P网络 |
+| 📰 **RSS订阅** | 支持RSS自动下载，订阅管理 |
+| 🔍 **搜索引擎** | 内置多引擎搜索，聚合结果 |
+| ⚡ **速度控制** | 灵活的速度限制和队列管理 |
+| 🌐 **远程访问** | 内置Web界面，随时随地管理 |
+| 📁 **文件管理** | 顺序下载、选择性下载、文件优先级 |
+| 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
+
+---
+
+## 🎨 双WebUI设计
+
+本应用包含**两套精美界面**，默认使用VueTorrent：
+
+| 界面 | 特点 |
+|------|------|
+| **VueTorrent** ✨ | 现代美观、响应式设计、Vue 3 + Vuetify 3、多语言支持 |
+| **qBittorrent原生** | 功能完整、轻量快速、一键切换 |
+
+> 💡 **切换方法**：进入 qBittorrent → 设置 → Web UI → 取消勾选"使用备用Web UI"
+> 
+> 📌 **注意**：使用原生UI时，必须**新标签页打开**进入设置页面才能切换。
+
+---
+
+## 📦 安装说明
+
+> 📌 **注意**：本应用目前**仅支持ARM64架构**（如飞牛NAS ARM版）
+
+### 手动安装
+
+1. 打开 **应用中心**
+2. 点击左下角 **手动安装**
+3. 选择 `qbittorrent-vuetorrent-5.1.4-arm64.fpk` 安装包
+
+
+```bash
+# 命令行安装（可选）
+appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
+```
+
+---
+
+## 💻 系统要求
+
+| 项目 | 默认值 |
+|------|--------|
+| 访问地址 | `http://<你的NAS_IP>:8080` |
+| 默认用户名 | `admin` |
+| 默认密码 | `adminadmin` |
+| WebUI端口 | `8080` (暂不支持修改) |
+
+> ⚠️ **安全提示**：请首次登录后立即修改默认密码！
+
+---
+
+## 🤝 支持与反馈
+
+- 🐛 [报告问题](https://github.com/sushazhi/fnos-qbittorrent/issues)
+- 💬 [飞牛论坛](https://club.fnnas.com/)
+- 📖 [fnOS开发文档](https://developer.fnnas.com/)
+
+---
+
+## 📄 许可证
+
+本项目基于 [GPL-2.0](LICENSE) 许可证开源。
+
+**感谢**：
+- [qBittorrent](https://www.qbittorrent.org/) - 强大的BitTorrent客户端
+- [VueTorrent](https://github.com/VueTorrent/VueTorrent) - 精美的qBittorrent WebUI
+- [qbittorrent-nox-static](https://userdocs.github.io/qbittorrent-nox-static/) - qBittorrent静态编译指南
+- [fnOS](https://www.fnnas.com/) - 优秀的国产NAS系统
+
+---
+
+[English](README_EN.md)

@@ -1,0 +1,39 @@
+{
+  "name": "qbittorrent-fnos",
+  "version": "5.1.4",
+  "description": "qBittorrent for Feiniu NAS - 原生BitTorrent客户端",
+  "author": "yukihana <https://github.com/sushazhi>",
+  "license": "GPL-2.0",
+  "changelog": "<div>初始版本发布</div><div>基于qBittorrent 4.6.5</div><div>支持完整的BitTorrent功能</div><div>- DHT/PEX/LSD 协议支持</div><div>- RSS订阅和自动下载</div><div>- 搜索引擎集成</div><div>- 速度控制和队列管理</div><div>- Web界面远程访问</div><div>- BitTorrent v2 支持</div>",
+  "scripts": {
+    "lint:shell": "shellcheck cmd/* wizard/*",
+    "lint:json": "python3 -m json.tool config/privilege && python3 -m json.tool config/resource",
+    "lint:manifest": "grep -E '^(appname|version|display_name|desc|arch|platform|source) = ' manifest",
+    "lint": "npm run lint:shell && npm run lint:json && npm run lint:manifest",
+    "package": "fnpack build app",
+    "package:x86": "fnpack build app --arch x86_64",
+    "package:arm": "fnpack build app --arch arm64",
+    "clean": "rm -rf app/src/build"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "shellcheck": "^0.10.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/qbittorrent/qBittorrent.git"
+  },
+  "keywords": [
+    "bittorrent",
+    "qbittorrent",
+    "fnos",
+    "feiniu",
+    "nas",
+    "torrent",
+    "p2p"
+  ],
+  "os": [
+    "linux",
+    "debian"
+  ]
+}

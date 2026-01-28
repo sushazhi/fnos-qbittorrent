@@ -1,0 +1,51 @@
+#!/bin/bash
+# cmd/install_init - qBittorrent安装初始化脚本
+
+set -e
+
+# 错误日志文件
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/qbittorrent_install_error.log}"
+
+echo "Installing qBittorrent..."
+
+# 检查环境变量
+if [ -n "$TRIM_PKGVAR" ]; then
+    DATA_DIR="$TRIM_PKGVAR"
+else
+    echo "Error: TRIM_PKGVAR not set" > "$ERROR_LOG"
+    exit 1
+fi
+
+CONFIG_FILE="$DATA_DIR/qBittorrent/config/qBittorrent.conf"
+
+# 创建目录
+if ! mkdir -p "$DATA_DIR/qBittorrent/config" 2>/dev/null; then
+    echo "Error: Failed to create data directory" > "$ERROR_LOG"
+    exit 1
+fi
+
+# 只在配置文件不存在时创建
+if [ ! -f "$CONFIG_FILE" ]; then
+    cat > "$CONFIG_FILE" << 'EOF'
+[Preferences]
+General\Locale=zh_CN
+Downloads\SavePath=/vol1/1000/downloads/
+Downloads\TempPath=/vol1/1000/temp/
+WebUI\Address=*
+WebUI\Port=8080
+WebUI\LocalHostAuth=true
+WebUI\Username=admin
+WebUI\Password_PBKDF2="@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)"
+WebUI\CSRFProtection=false
+WebUI\ClickjackingProtection=false
+WebUI\AlternativeUIEnabled=true
+WebUI\RootFolder=/vol1/@appcenter/qbittorrent/ui/vuetorrent
+
+[LegalNotice]
+Accepted=true
+EOF
+    echo "Config created: $CONFIG_FILE"
+fi
+
+echo "Install initialized successfully"
+exit 0

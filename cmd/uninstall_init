@@ -1,0 +1,53 @@
+#!/bin/bash
+# cmd/uninstall_init - qBittorrent卸载初始化脚本
+
+set -e
+
+APP_NAME="qbittorrent"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
+
+echo "Uninstalling qBittorrent..."
+
+# 获取用户选择的数据处理方式
+# wizard_data_action 由 wizard/uninstall 传递：keep=保留数据，delete=删除数据
+DATA_ACTION="${wizard_data_action:-keep}"
+echo "User data action preference: $DATA_ACTION"
+
+# 删除配置目录（无论选择如何，配置目录都删除）
+CONFIG_DIR="${TRIM_PKGETC}"
+echo "Checking CONFIG_DIR: $CONFIG_DIR"
+if [ -d "$CONFIG_DIR" ]; then
+    echo "Removing configuration directory: $CONFIG_DIR"
+    if ! rm -rf "$CONFIG_DIR" 2>/dev/null; then
+        echo "Error: Failed to remove configuration directory" > "$ERROR_LOG"
+    fi
+else
+    echo "CONFIG_DIR does not exist"
+fi
+
+# 删除 HOME 目录（如果存在）
+HOME_DIR="${TRIM_PKGHOME}"
+echo "Checking HOME_DIR: $HOME_DIR"
+if [ -d "$HOME_DIR" ]; then
+    echo "Removing home directory: $HOME_DIR"
+    rm -rf "$HOME_DIR"
+else
+    echo "HOME_DIR does not exist"
+fi
+
+# 根据用户选择处理数据目录
+DATA_DIR="${TRIM_PKGVAR}"
+echo "Checking DATA_DIR: $DATA_DIR"
+if [ -d "$DATA_DIR" ]; then
+    if [ "$DATA_ACTION" = "delete" ]; then
+        echo "Removing data directory (user chose to delete): $DATA_DIR"
+        rm -rf "$DATA_DIR"
+    else
+        echo "Keeping data directory (user chose to keep): $DATA_DIR"
+    fi
+else
+    echo "DATA_DIR does not exist"
+fi
+
+echo "qBittorrent uninstall initialized"
+exit 0

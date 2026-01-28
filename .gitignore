@@ -1,0 +1,129 @@
+# Build outputs
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+build/
+dist/
+out/
+bin/
+obj/
+lib/
+
+# qBittorrent specific
+qBittorrent-src/
+libtorrent-rasterbar-*/
+qt6-*/
+
+# fnOS packages
+*.fpk
+*.tar.gz
+
+# Artifact directories - do not commit build outputs
+artifacts/
+build-output/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Qt
+*.pro.user
+*.qmlc
+*.jsc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.log
+*.pid
+
+# Test files
+test/data/downloads/*
+test/data/temp/*
+!test/data/downloads/.gitkeep
+!test/data/temp/.gitkeep
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# OS files
+Thumbs.db
+.DS_Store
+.Trashes
+
+# Editor backup
+*~
+.#*
+\#*#
+
+# Archives
+*.zip
+*.tar
+*.tgz
+*.rar
+*.7z
+
+# Coverage
+coverage/
+*.coverage
+.coverage
+htmlcov/
+
+# Documentation builds
+docs/_build/
+docs/site/
+
+# Dependencies (if not committed)
+node_modules/
+vendor/
+bundle/
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Release notes drafts
+RELEASE_NOTES.md
+release_notes.md
+
+# Artifact directories
+artifacts/
+build-output/
+
+# Keep .fpk files in artifacts directory
+!artifacts/*.fpk
+!artifacts/*.sha256sum

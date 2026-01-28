@@ -1,0 +1,16 @@
+# Force LF line endings for all files
+* text=auto eol=lf
+
+# Shell scripts must be LF
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Config files
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+manifest text eol=lf
+
+# Docs
+*.md text eol=lf
+*.txt text eol=lf
