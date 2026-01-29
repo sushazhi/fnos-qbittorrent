@@ -15,7 +15,7 @@ permissions:
 env:
   APP_VERSION: 5.1.4.1-test
   QB_VERSION: "5.1.4"
-  VUETORRENT_VERSION: "v2.31.3"
+  VUETORRENT_VERSION: "latest"
 
 jobs:
   build:
@@ -82,7 +82,11 @@ jobs:
 
           # Download VueTorrent
           echo "Downloading VueTorrent ${VUETORRENT_VERSION}..."
-          VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/download/${VUETORRENT_VERSION}/vuetorrent.zip"
+          if [ "$VUETORRENT_VERSION" = "latest" ]; then
+            VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip"
+          else
+            VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/download/${VUETORRENT_VERSION}/vuetorrent.zip"
+          fi
           wget -q "$VUETORRENT_URL" -O vuetorrent.zip
           
           if [ ! -s vuetorrent.zip ]; then
