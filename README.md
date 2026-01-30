@@ -140,25 +140,8 @@ fnos-qbittorrent/
 │   └── ui/                  # WebUI资源
 │       ├── vuetorrent/      # VueTorrent WebUI
 │       └── www/            # qBittorrent原生WebUI
-├── artifacts/              # 构建产物目录
-│   ├── qbittorrent-vuetorrent-*.fpk          # fnOS应用安装包
-│   └── qbittorrent-vuetorrent-*.fpk.sha256sum # 安装包SHA256校验和
 ├── manifest                # 应用清单文件
-└── package.json            # 项目配置文件
 ```
-
-### 构建产物
-
-构建过程会在 `artifacts/` 目录生成以下文件：
-
-| 文件类型 | 说明 |
-|---------|------|
-| `.fpk` 文件 | fnOS 应用安装包 |
-| `.sha256sum` 文件 | 安装包的 SHA256 校验和 |
-
-例如：
-- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk`
-- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk.sha256sum`
 
 ## 📄 许可证
 

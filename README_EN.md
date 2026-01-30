@@ -109,25 +109,8 @@ fnos-qb/
 │   ├── install             # Installation wizard
 │   ├── uninstall           # Uninstallation wizard
 │   └── upgrade             # Upgrade wizard
-├── artifacts/              # Build artifacts directory
-│   ├── qbittorrent-vuetorrent-*.fpk          # fnOS application installation package
-│   └── qbittorrent-vuetorrent-*.fpk.sha256sum # Installation package SHA256 checksum
 ├── manifest                # Application manifest file
-└── package.json            # Project configuration file
 ```
-
-### Build Artifacts
-
-The build process generates the following files in the `artifacts/` directory:
-
-| File Type | Description |
-|-----------|-------------|
-| `.fpk` file | fnOS application installation package |
-| `.sha256sum` file | SHA256 checksum for the installation package |
-
-Examples:
-- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk`
-- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk.sha256sum`
 
 ## 📄 License
 
