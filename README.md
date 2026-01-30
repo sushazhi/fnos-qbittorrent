@@ -109,7 +109,7 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 ### 核心目录结构
 
 ```
-fnos-qb/
+fnos-qbittorrent/
 ├── app/                    # fnOS应用资源
 │   ├── bin/                # 构建产生的可执行文件
 │   │   └── qbittorrent-nox  # qBittorrent守护进程
