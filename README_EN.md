@@ -86,22 +86,38 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 
 ```
 fnos-qb/
-├── .github/             # GitHub Actions workflow configurations
-│   └── workflows/       # CI/CD build and release configurations
-├── app/                 # Application core files
-│   └── ui/              # User interface related files
-│       ├── images/      # Application icons
-│       └── www/         # Web interface files
-├── cmd/                 # Application command scripts
-├── config/              # Configuration files directory
-├── docs/                # Project documentation
-├── wizard/              # Installation wizard files
-├── artifacts/           # Build artifacts directory
-├── README.md            # Chinese documentation
-├── README_EN.md         # English documentation
-├── LICENSE              # License file
-├── manifest             # Application manifest file
-└── package.json         # Project configuration file
+├── app/                    # fnOS application resources
+│   └── ui/                  # WebUI resources
+│       ├── config          # Desktop application configuration
+│       ├── images/         # Application icons
+│       │   ├── icon_64.png # 64x64 icon
+│       │   └── icon_256.png # 256x256 icon
+│       └── www/            # Web interface files
+├── cmd/                    # fnOS lifecycle scripts
+│   ├── config_callback     # Configuration post-processing
+│   ├── config_init         # Configuration initialization
+│   ├── install_init        # Pre-installation initialization
+│   ├── install_callback    # Post-installation callback
+│   ├── main               # Main service control script
+│   ├── uninstall_init      # Pre-uninstallation cleanup
+│   ├── uninstall_callback  # Post-uninstallation cleanup
+│   ├── upgrade_init        # Pre-upgrade backup
+│   └── upgrade_callback    # Post-upgrade recovery
+├── config/                 # Configuration files
+│   ├── privilege           # Permission configuration (ports, mount points)
+│   └── resource            # Resource mapping configuration
+├── wizard/                 # Wizard UI definitions
+│   ├── install             # Installation wizard
+│   ├── uninstall           # Uninstallation wizard
+│   └── upgrade             # Upgrade wizard
+├── .github/                # GitHub Actions workflow configurations
+│   └── workflows/          # CI/CD build and release configurations
+├── artifacts/              # Build artifacts directory
+├── README.md               # Chinese documentation
+├── README_EN.md            # English documentation
+├── LICENSE                 # License file
+├── manifest                # Application manifest file
+└── package.json            # Project configuration file
 ```
 
 ### Build Artifacts
