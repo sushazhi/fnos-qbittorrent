@@ -177,7 +177,7 @@ jobs:
           echo "=== Create .fpk package ==="
 
           # Download fnpack
-          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-amd64"
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-arm64"
           wget -q "$FNPACK_URL" -O fnpack
           chmod +x fnpack
 
