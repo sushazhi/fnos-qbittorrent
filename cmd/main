@@ -10,6 +10,9 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
+# 错误日志文件（用于向用户展示错误信息）
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
+
 # 端口配置
 if [ -n "$TRIM_SERVICE_PORT" ]; then
     WEBUI_PORT="$TRIM_SERVICE_PORT"
@@ -17,10 +20,22 @@ else
     WEBUI_PORT=8080
 fi
 
-# 检查环境变量
+# 检查环境变量 - 对于stop/status命令，尝试从脚本位置推断
 if [ -z "$TRIM_APPDEST" ]; then
-    echo "Error: TRIM_APPDEST not set. This script must be run from fnOS app environment."
-    exit 1
+    SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)"
+    # 尝试从脚本路径推断 TRIM_APPDEST
+    # 格式: /var/apps/{appname}/cmd/main
+    if [[ "$SCRIPT_PATH" =~ /var/apps/([^/]+)/cmd ]]; then
+        export TRIM_APPDEST="/var/apps/${BASH_REMATCH[1]}"
+        export TRIM_PKGTMP="/var/tmp/${BASH_REMATCH[1]}"
+        export TRIM_PKGVAR="/var/lib/${BASH_REMATCH[1]}"
+        export TRIM_PKGETC="/etc/${BASH_REMATCH[1]}"
+        export TRIM_PKGHOME="/home/${BASH_REMATCH[1]}"
+        echo "Warning: Inferred paths from script location (TRIM_APPDEST=$TRIM_APPDEST)"
+    else
+        echo "Error: TRIM_APPDEST not set and cannot infer paths from script location."
+        exit 1
+    fi
 fi
 
 start() {
@@ -29,7 +44,7 @@ start() {
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "${APP_NAME} is already running (PID: $PID)"
-            return 1
+            return 0
         fi
         # PID文件存在但进程不存在，清理
         rm -f "$PID_FILE"
@@ -44,11 +59,11 @@ start() {
 
     # 检查可执行文件
     if [ ! -x "$BIN_DIR/qbittorrent-nox" ]; then
-        echo "Error: qbittorrent-nox not found or not executable at $BIN_DIR/qbittorrent-nox"
+        echo "Error: qbittorrent-nox not found or not executable at $BIN_DIR/qbittorrent-nox" > "$ERROR_LOG"
         return 1
     fi
 
-    # 创建配置目录（qBittorrent会从 profile/qBittorrent/config/qBittorrent.conf 读取）
+    # 创建配置目录
     mkdir -p "${DATA_DIR}/qBittorrent/config"
 
     # 只在配置文件不存在时创建默认配置
@@ -77,25 +92,6 @@ EOF
         echo "Using existing configuration: $CONFIG_FILE"
     fi
 
-    echo "=== qBittorrent binary info ==="
-    file "$BIN_DIR/qbittorrent-nox"
-    "$BIN_DIR/qbittorrent-nox" --version 2>&1 || true
-    echo ""
-
-    echo "WebUI Port: $WEBUI_PORT"
-
-    echo "=== Environment ==="
-    echo "TRIM_APPDEST=$TRIM_APPDEST"
-    echo "TRIM_PKGETC=$TRIM_PKGETC"
-    echo "TRIM_PKGVAR=$TRIM_PKGVAR"
-    echo "TRIM_PKGHOME=$TRIM_PKGHOME"
-    echo "TRIM_PKGTMP=$TRIM_PKGTMP"
-    echo "DATA_DIR=$DATA_DIR"
-    echo "PROFILE_DIR=$PROFILE_DIR"
-    echo "CONFIG_DIR=$CONFIG_DIR"
-    echo "WEBUI_PORT=$WEBUI_PORT"
-    echo ""
-
     # 启动qBittorrent-nox
     echo "Starting qBittorrent..."
     "$BIN_DIR/qbittorrent-nox" \
@@ -113,13 +109,9 @@ EOF
         echo "WebUI: http://$(hostname -I | awk '{print $1}'):${WEBUI_PORT}"
         return 0
     else
-        echo "Error: ${APP_NAME} failed to start."
-        echo ""
-        echo "=== Last 20 lines of log ==="
+        echo "Error: ${APP_NAME} failed to start." > "$ERROR_LOG"
         if [ -f "$LOG_FILE" ]; then
-            tail -20 "$LOG_FILE"
-        else
-            echo "Log file not found: $LOG_FILE"
+            tail -20 "$LOG_FILE" >> "$ERROR_LOG"
         fi
         rm -f "$PID_FILE"
         return 1
@@ -127,18 +119,29 @@ EOF
 }
 
 stop() {
-    if [ ! -f "$PID_FILE" ]; then
-        echo "${APP_NAME} is not running"
-        return 1
+    # 尝试多个可能的PID文件位置
+    PID_FILE=""
+    for path in "${TRIM_PKGTMP:-/var/tmp}/${APP_NAME}.pid" "/var/tmp/${APP_NAME}.pid"; do
+        if [ -f "$path" ]; then
+            PID_FILE="$path"
+            break
+        fi
+    done
+
+    # 查找进程
+    PID=""
+    if [ -n "$PID_FILE" ] && [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE" 2>/dev/null)
     fi
 
-    PID=$(cat "$PID_FILE")
+    # 如果PID文件无效，查找进程
+    if [ -z "$PID" ] || ! ps -p "$PID" > /dev/null 2>&1; then
+        PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
+    fi
 
-    # 检查进程是否存在
-    if ! ps -p "$PID" > /dev/null 2>&1; then
-        echo "${APP_NAME} process not found (PID: $PID)"
-        rm -f "$PID_FILE"
-        return 1
+    if [ -z "$PID" ]; then
+        echo "${APP_NAME} is not running"
+        return 0
     fi
 
     echo "Stopping ${APP_NAME} (PID: $PID)..."
@@ -155,10 +158,12 @@ stop() {
     if ps -p "$PID" > /dev/null 2>&1; then
         echo "Process still running, forcing kill..."
         kill -9 "$PID" 2>/dev/null || true
-        sleep 1
     fi
 
-    rm -f "$PID_FILE"
+    # 清理PID文件
+    rm -f "${TRIM_PKGTMP}/${APP_NAME}.pid" 2>/dev/null
+    rm -f "/var/tmp/${APP_NAME}.pid" 2>/dev/null
+
     echo "${APP_NAME} stopped"
     return 0
 }
@@ -170,17 +175,31 @@ restart() {
 }
 
 status() {
+    # 检查进程是否运行
+    RUNNING=false
+
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
-            echo "${APP_NAME} is running (PID: $PID)"
-            # 显示进程信息
-            ps -p "$PID" -o pid,pcpu,pmem,etime,cmd
-            return 0
+            RUNNING=true
         fi
     fi
+
+    # 如果PID文件无效，查找进程
+    if [ "$RUNNING" = false ]; then
+        PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
+        if [ -n "$PID" ]; then
+            RUNNING=true
+        fi
+    fi
+
+    if [ "$RUNNING" = true ]; then
+        echo "${APP_NAME} is running (PID: $PID)"
+        return 0
+    fi
+
     echo "${APP_NAME} is not running"
-    return 1
+    return 3
 }
 
 case "$1" in

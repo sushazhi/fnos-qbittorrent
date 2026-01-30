@@ -2,10 +2,10 @@ name: Build qBittorrent for fnOS
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, test ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, develop, test ]
   workflow_dispatch:
     # No inputs needed, only ARM64 is supported
 
@@ -13,14 +13,14 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: 5.1.4
+  APP_VERSION: 5.1.4.1-test
   QB_VERSION: "5.1.4"
-  VUETORRENT_VERSION: "v2.31.3"
+  VUETORRENT_VERSION: "latest"
 
 jobs:
   build:
     name: Build qBittorrent (Vue UI) - ${{ matrix.arch }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
@@ -29,16 +29,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up QEMU for ARM64 cross-compilation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Install qemu-user-static
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-user-static
 
       - name: Download qBittorrent ARM64 static binary from userdocs
         run: |
@@ -54,9 +44,9 @@ jobs:
           echo "Verifying binary..."
           file qbittorrent-nox
 
-          # Use qemu to run ARM64 binary on x86_64 CI
-          echo "Checking binary version (using qemu)..."
-          qemu-aarch64-static ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
+          # Run on native ARM64 - no qemu needed
+          echo "Checking binary version..."
+          ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
 
       - name: Download and prepare WebUI with VueTorrent
         run: |
@@ -82,7 +72,11 @@ jobs:
 
           # Download VueTorrent
           echo "Downloading VueTorrent ${VUETORRENT_VERSION}..."
-          VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/download/${VUETORRENT_VERSION}/vuetorrent.zip"
+          if [ "$VUETORRENT_VERSION" = "latest" ]; then
+            VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/latest/download/vuetorrent.zip"
+          else
+            VUETORRENT_URL="https://github.com/VueTorrent/VueTorrent/releases/download/${VUETORRENT_VERSION}/vuetorrent.zip"
+          fi
           wget -q "$VUETORRENT_URL" -O vuetorrent.zip
           
           if [ ! -s vuetorrent.zip ]; then
@@ -183,7 +177,7 @@ jobs:
           echo "=== Create .fpk package ==="
 
           # Download fnpack
-          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-amd64"
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-arm64"
           wget -q "$FNPACK_URL" -O fnpack
           chmod +x fnpack
 
@@ -245,32 +239,36 @@ jobs:
           retention-days: 30
 
       - name: Commit fpk to repository
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         run: |
           # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
+          # Get target branch (main or test)
+          TARGET_BRANCH=${{ contains(github.ref, 'refs/heads/main') && 'main' || 'test' }}
+          echo "Target branch: ${TARGET_BRANCH}"
+
           # Fetch latest changes first
-          git fetch origin main
-          
+          git fetch origin ${TARGET_BRANCH}
+
           # Copy fpk files to artifacts directory
           mkdir -p artifacts
           cp "${PACKAGE_NAME}" artifacts/
           cp "${PACKAGE_NAME}.sha256sum" artifacts/
-          
+
           # Add and commit (force add to override .gitignore)
           git add -f artifacts/
-          git merge --no-edit origin/main || true
-          git commit -m "ci: add build artifact ${PACKAGE_NAME}
+          git merge --no-edit origin/${TARGET_BRANCH} || true
+          echo "ci: add build artifact ${PACKAGE_NAME}" > /tmp/commit_msg.txt
+          echo "" >> /tmp/commit_msg.txt
+          echo "Built from: ${{ github.sha }}" >> /tmp/commit_msg.txt
+          echo "Date: $(date -u +%Y-%m-%d)" >> /tmp/commit_msg.txt
+          echo "Branch: ${TARGET_BRANCH}" >> /tmp/commit_msg.txt
+          git commit -F /tmp/commit_msg.txt
 
-          Built from: ${{ github.sha }}
-          Date: $(date -u +%Y-%m-%d)
-
-          [skip ci]"
-
-          # Push to repository
-          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
+          # Push to target branch
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:${TARGET_BRANCH}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

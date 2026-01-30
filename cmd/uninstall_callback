@@ -3,6 +3,9 @@
 
 set -e
 
+APP_NAME="qbittorrent"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
+
 echo "Cleaning up qBittorrent..."
 
 # 清理临时文件和缓存

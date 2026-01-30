@@ -7,14 +7,15 @@ APP_NAME="qbittorrent"
 BIN_DIR="${TRIM_APPDEST}/bin"
 CONFIG_DIR="${TRIM_PKGVAR}/config"
 DATA_DIR="${TRIM_PKGVAR}"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
 
 echo "Running ${APP_NAME} install_callback..."
 
 # 设置可执行权限
-chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null || true
-chmod +x "${TRIM_APPDEST}/../cmd/main" 2>/dev/null || true
-
-# 配置目录由 cmd/main 首次启动时创建
+if ! chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null; then
+    echo "Error: Failed to set executable permission on qbittorrent-nox" > "$ERROR_LOG"
+    exit 1
+fi
 
 echo "=================================="
 echo "qBittorrent installation complete"

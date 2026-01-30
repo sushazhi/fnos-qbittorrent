@@ -1,19 +1,28 @@
 #!/bin/bash
 # cmd/install_init - qBittorrent安装初始化脚本
 
+set -e
+
+# 错误日志文件
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/qbittorrent_install_error.log}"
+
 echo "Installing qBittorrent..."
 
 # 检查环境变量
 if [ -n "$TRIM_PKGVAR" ]; then
     DATA_DIR="$TRIM_PKGVAR"
 else
-    DATA_DIR="/var/apps/qbittorrent/data"
+    echo "Error: TRIM_PKGVAR not set" > "$ERROR_LOG"
+    exit 1
 fi
 
 CONFIG_FILE="$DATA_DIR/qBittorrent/config/qBittorrent.conf"
 
 # 创建目录
-mkdir -p "$DATA_DIR/qBittorrent/config" 2>/dev/null
+if ! mkdir -p "$DATA_DIR/qBittorrent/config" 2>/dev/null; then
+    echo "Error: Failed to create data directory" > "$ERROR_LOG"
+    exit 1
+fi
 
 # 只在配置文件不存在时创建
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -38,5 +47,5 @@ EOF
     echo "Config created: $CONFIG_FILE"
 fi
 
-echo "Done"
+echo "Install initialized successfully"
 exit 0

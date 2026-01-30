@@ -1,12 +1,147 @@
 #!/bin/bash
 # cmd/upgrade_callback - qBittorrent升级回调脚本
+# 功能：升级后恢复数据、设置权限、验证配置、启动服务
 
 set -e
 
-echo "Completing qBittorrent upgrade..."
+APP_NAME="qbittorrent"
+BIN_DIR="${TRIM_APPDEST}/bin"
+DATA_DIR="${TRIM_PKGVAR}"
+CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
+CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
+PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
 
-# 升级后的清理工作
-# 验证新版本是否正常
+# 备份在shares目录
+SHARE_DIR="/vol1/@appshare/qbittorrent"
+BACKUP_DIR="${SHARE_DIR}/.data_backup"
 
-echo "qBittorrent upgrade completed"
-exit 0
+echo "=================================="
+echo "qBittorrent Upgrade Completed"
+echo "=================================="
+echo ""
+
+# 设置可执行权限
+echo "[1/3] Setting executable permissions..."
+chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null || true
+chmod +x "${TRIM_APPDEST}/cmd/main" 2>/dev/null || true
+
+# 验证二进制文件
+echo "[2/3] Verifying new installation..."
+if [ -x "$BIN_DIR/qbittorrent-nox" ]; then
+    echo "qbittorrent-nox found and executable"
+else
+    echo "Error: qbittorrent-nox not found or not executable at $BIN_DIR" > "$ERROR_LOG"
+    exit 1
+fi
+
+# 确保配置存在（保留数据时已有，否则创建默认配置）
+echo "[3/3] Checking configuration..."
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Using existing configuration: $CONFIG_FILE"
+    # 确保VueTorrent路径正确
+    sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE" 2>/dev/null || true
+fi
+
+# 恢复数据（如果存在备份）
+echo ""
+echo "[Optional] Restoring data from backup..."
+
+# 检查是否有备份
+BACKUP_EXISTS=false
+if [ -d "$BACKUP_DIR" ] && [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+    BACKUP_EXISTS=true
+fi
+
+if [ "$BACKUP_EXISTS" = true ]; then
+    # 有备份：直接恢复数据（覆盖新安装的默认配置）
+    echo "Restoring data from backup..."
+    mkdir -p "$DATA_DIR"
+    rm -rf "$DATA_DIR"/* 2>/dev/null || true
+    cp -a "$BACKUP_DIR"/* "$DATA_DIR/" 2>/dev/null || true
+    echo "Data restored successfully from shares backup"
+
+    # 删除备份
+    rm -rf "$BACKUP_DIR"
+    echo "Backup cleaned up from shares"
+else
+    # 没有备份：检查是否有真实数据
+    CONFIG_EXISTS=false
+    if [ -f "$CONFIG_FILE" ]; then
+        # 检查是否有种子/RSS等数据目录
+        if [ -d "$DATA_DIR/qBittorrent" ] && [ -n "$(ls -A "$DATA_DIR/qBittorrent" 2>/dev/null)" ]; then
+            CONFIG_EXISTS=true
+        fi
+    fi
+
+    if [ "$CONFIG_EXISTS" = true ]; then
+        echo "Existing data found, using current data"
+    else
+        # 没有数据也没有备份：创建默认配置
+        echo "No backup and no existing data, keeping default configuration"
+        mkdir -p "$CONFIG_DIR"
+
+        cat > "$CONFIG_FILE" << 'EOF'
+[Preferences]
+General\Locale=zh_CN
+Downloads\SavePath=/vol1/1000/downloads/
+Downloads\TempPath=/vol1/1000/temp/
+WebUI\Address=*
+WebUI\Port=8080
+WebUI\LocalHostAuth=true
+WebUI\Username=admin
+WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\ClickjackingProtection=false
+WebUI\CSRFProtection=false
+WebUI\AlternativeUIEnabled=true
+WebUI\RootFolder=__VUETORRENT_ROOT__
+EOF
+        sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE" 2>/dev/null || true
+        echo "Default configuration created"
+    fi
+fi
+
+# 启动服务
+echo ""
+
+# 查找main脚本
+MAIN_SCRIPT=""
+for path in "${TRIM_APPDEST}/cmd/main" "${TRIM_PKGETC}/../cmd/main" "/var/apps/qbittorrent/cmd/main"; do
+    if [ -x "$path" ]; then
+        MAIN_SCRIPT="$path"
+        break
+fi
+
+done
+
+if [ -n "$MAIN_SCRIPT" ]; then
+    "$MAIN_SCRIPT" start
+    EXIT_CODE=$?
+else
+    echo "Error: main script not found"
+    exit 1
+fi
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo "=================================="
+    echo "qBittorrent upgrade completed successfully!"
+    echo "=================================="
+    echo ""
+    echo "Access information:"
+    echo "  WebUI: http://<NAS_IP>:8080"
+    echo "  Username: admin"
+    echo "  Password: (unchanged)"
+    echo ""
+    echo "IMPORTANT: If you changed qBittorrent version, "
+    echo "           some settings may need to be reconfigured."
+    exit 0
+else
+    echo ""
+    echo "=================================="
+    echo "Warning: Upgrade completed but service failed to start"
+    echo "=================================="
+    echo "Please check logs at: ${TRIM_PKGVAR}/${APP_NAME}.log"
+    exit 1
+fi

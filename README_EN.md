@@ -1,9 +1,12 @@
 # qBittorrent for fnOS 🚀
 
+🌐 **语言/Language** 
+ - [简体中文]( README.md ) | [English]( README_EN.md )
+
 A powerful and beautiful BitTorrent download tool for Feiniu NAS.
 
 ![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.2-purple?style=flat-square&logo=vue.js)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -77,6 +80,41 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 
 ---
 
+## 📁 Project Structure
+
+### Core Directory Structure
+
+```
+fnos-qb/
+├── app/                    # fnOS application resources
+│   ├── bin/                # Build-generated executable files
+│   │   └── qbittorrent-nox  # qBittorrent daemon process
+│   └── ui/                  # WebUI resources
+│       ├── vuetorrent/      # VueTorrent WebUI
+│       └── www/            # qBittorrent native WebUI
+├── cmd/                    # fnOS lifecycle scripts
+│   ├── config_callback     # Configuration post-processing
+│   ├── config_init         # Configuration initialization
+│   ├── install_init        # Pre-installation initialization
+│   ├── install_callback    # Post-installation callback
+│   ├── main               # Main service control script
+│   ├── uninstall_init      # Pre-uninstallation cleanup
+│   ├── uninstall_callback  # Post-uninstallation cleanup
+│   ├── upgrade_init        # Pre-upgrade backup
+│   └── upgrade_callback    # Post-upgrade recovery
+├── config/                 # Configuration files
+│   ├── privilege           # Permission configuration (ports, mount points)
+│   └── resource            # Resource mapping configuration
+├── wizard/                 # Wizard UI definitions
+│   ├── install             # Installation wizard
+│   ├── uninstall           # Uninstallation wizard
+│   └── upgrade             # Upgrade wizard
+├── manifest                # Application manifest file
+├── ICON.PNG                # Application icon (64x64)
+├── ICON_256.PNG            # Application icon (256x256)
+└── LICENSE                 # License file
+```
+
 ## 📄 License
 
 This project is open source under the [GPL-2.0](LICENSE) license.
@@ -87,6 +125,4 @@ This project is open source under the [GPL-2.0](LICENSE) license.
 - [qbittorrent-nox-static](https://userdocs.github.io/qbittorrent-nox-static/) - qBittorrent static compilation guide
 - [fnOS](https://www.fnnas.com/) - Excellent Chinese NAS system
 
----
 
-[中文](README.md)
