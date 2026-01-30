@@ -2,12 +2,19 @@ name: Build qBittorrent for fnOS
 
 on:
   push:
-    branches: [ main, develop, test ]
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop, test ]
   workflow_dispatch:
-    # No inputs needed, only ARM64 is supported
+    inputs:
+      qb_version:
+        description: 'qBittorrent version (e.g., 5.1.4)'
+        required: false
+        default: '5.1.4'
+      vuetorrent_version:
+        description: 'VueTorrent version (e.g., 2.31.3 or "latest")'
+        required: false
+        default: 'latest'
 
 permissions:
   contents: write
