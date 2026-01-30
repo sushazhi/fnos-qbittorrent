@@ -1,9 +1,11 @@
 # qBittorrent for fnOS 🚀
 
+[English](README_EN.md)
+
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
 ![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.2-purple?style=flat-square&logo=vue.js)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -111,6 +113,4 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 - [qbittorrent-nox-static](https://userdocs.github.io/qbittorrent-nox-static/) - qBittorrent静态编译指南
 - [fnOS](https://www.fnnas.com/) - 优秀的国产NAS系统
 
----
 
-[English](README_EN.md)

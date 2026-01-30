@@ -1,9 +1,11 @@
 # qBittorrent for fnOS 🚀
 
+[中文](README.md)
+
 A powerful and beautiful BitTorrent download tool for Feiniu NAS.
 
 ![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.2-purple?style=flat-square&logo=vue.js)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -87,6 +89,4 @@ This project is open source under the [GPL-2.0](LICENSE) license.
 - [qbittorrent-nox-static](https://userdocs.github.io/qbittorrent-nox-static/) - qBittorrent static compilation guide
 - [fnOS](https://www.fnnas.com/) - Excellent Chinese NAS system
 
----
 
-[中文](README.md)
