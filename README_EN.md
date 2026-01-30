@@ -87,12 +87,11 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 ```
 fnos-qb/
 ├── app/                    # fnOS application resources
+│   ├── bin/                # Build-generated executable files
+│   │   └── qbittorrent-nox  # qBittorrent daemon process
 │   └── ui/                  # WebUI resources
-│       ├── config          # Desktop application configuration
-│       ├── images/         # Application icons
-│       │   ├── icon_64.png # 64x64 icon
-│       │   └── icon_256.png # 256x256 icon
-│       └── www/            # Web interface files
+│       ├── vuetorrent/      # VueTorrent WebUI
+│       └── www/            # qBittorrent native WebUI
 ├── cmd/                    # fnOS lifecycle scripts
 │   ├── config_callback     # Configuration post-processing
 │   ├── config_init         # Configuration initialization
@@ -110,12 +109,9 @@ fnos-qb/
 │   ├── install             # Installation wizard
 │   ├── uninstall           # Uninstallation wizard
 │   └── upgrade             # Upgrade wizard
-├── .github/                # GitHub Actions workflow configurations
-│   └── workflows/          # CI/CD build and release configurations
 ├── artifacts/              # Build artifacts directory
-├── README.md               # Chinese documentation
-├── README_EN.md            # English documentation
-├── LICENSE                 # License file
+│   ├── qbittorrent-vuetorrent-*.fpk          # fnOS application installation package
+│   └── qbittorrent-vuetorrent-*.fpk.sha256sum # Installation package SHA256 checksum
 ├── manifest                # Application manifest file
 └── package.json            # Project configuration file
 ```
