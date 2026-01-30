@@ -1,6 +1,7 @@
 # qBittorrent for fnOS 🚀
 
-[中文](README.md)
+🌐 **语言/Language** 
+ - [简体中文]( README.md ) | [English]( README_EN.md )
 
 A powerful and beautiful BitTorrent download tool for Feiniu NAS.
 

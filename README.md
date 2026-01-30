@@ -1,6 +1,7 @@
 # qBittorrent for fnOS 🚀
 
-[English](README_EN.md)
+🌐 **语言/Language** 
+ - [简体中文]( README.md ) | [English]( README_EN.md )
 
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
