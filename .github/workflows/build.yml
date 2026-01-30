@@ -20,7 +20,7 @@ env:
 jobs:
   build:
     name: Build qBittorrent (Vue UI) - ${{ matrix.arch }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
@@ -29,16 +29,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up QEMU for ARM64 cross-compilation
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
-      - name: Install qemu-user-static
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-user-static
 
       - name: Download qBittorrent ARM64 static binary from userdocs
         run: |
@@ -54,9 +44,9 @@ jobs:
           echo "Verifying binary..."
           file qbittorrent-nox
 
-          # Use qemu to run ARM64 binary on x86_64 CI
-          echo "Checking binary version (using qemu)..."
-          qemu-aarch64-static ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
+          # Run on native ARM64 - no qemu needed
+          echo "Checking binary version..."
+          ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
 
       - name: Download and prepare WebUI with VueTorrent
         run: |
