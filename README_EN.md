@@ -110,6 +110,9 @@ fnos-qb/
 │   ├── uninstall           # Uninstallation wizard
 │   └── upgrade             # Upgrade wizard
 ├── manifest                # Application manifest file
+├── ICON.PNG                # Application icon (64x64)
+├── ICON_256.PNG            # Application icon (256x256)
+└── LICENSE                 # License file
 ```
 
 ## 📄 License

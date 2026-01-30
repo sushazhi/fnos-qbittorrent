@@ -109,14 +109,13 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 ### 核心目录结构
 
 ```
-fnos-qbittorrent/
+fnos-qb/
 ├── app/                    # fnOS应用资源
+│   ├── bin/                # 构建产生的可执行文件
+│   │   └── qbittorrent-nox  # qBittorrent守护进程
 │   └── ui/                  # WebUI资源
-│       ├── config          # 桌面应用配置
-│       ├── images/         # 应用图标
-│       │   ├── icon_64.png # 64x64图标
-│       │   └── icon_256.png # 256x256图标
-│       └── www/            # Web界面文件
+│       ├── vuetorrent/      # VueTorrent WebUI
+│       └── www/            # qBittorrent原生WebUI
 ├── cmd/                    # fnOS 生命周期脚本
 │   ├── config_callback     # 配置后置
 │   ├── config_init         # 配置初始化
@@ -134,13 +133,10 @@ fnos-qbittorrent/
 │   ├── install             # 安装向导
 │   ├── uninstall           # 卸载向导
 │   └── upgrade             # 升级向导
-├── app/                    # fnOS应用资源
-│   ├── bin/                # 构建产生的可执行文件
-│   │   └── qbittorrent-nox  # qBittorrent守护进程
-│   └── ui/                  # WebUI资源
-│       ├── vuetorrent/      # VueTorrent WebUI
-│       └── www/            # qBittorrent原生WebUI
 ├── manifest                # 应用清单文件
+├── ICON.PNG                # 应用图标（64x64）
+├── ICON_256.PNG            # 应用图标（256x256）
+└── LICENSE                 # 许可证文件
 ```
 
 ## 📄 许可证
