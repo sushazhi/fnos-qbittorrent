@@ -80,6 +80,43 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
 
 ---
 
+## 📁 Project Structure
+
+### Core Directory Structure
+
+```
+fnos-qb/
+├── .github/             # GitHub Actions workflow configurations
+│   └── workflows/       # CI/CD build and release configurations
+├── app/                 # Application core files
+│   └── ui/              # User interface related files
+│       ├── images/      # Application icons
+│       └── www/         # Web interface files
+├── cmd/                 # Application command scripts
+├── config/              # Configuration files directory
+├── docs/                # Project documentation
+├── wizard/              # Installation wizard files
+├── artifacts/           # Build artifacts directory
+├── README.md            # Chinese documentation
+├── README_EN.md         # English documentation
+├── LICENSE              # License file
+├── manifest             # Application manifest file
+└── package.json         # Project configuration file
+```
+
+### Build Artifacts
+
+The build process generates the following files in the `artifacts/` directory:
+
+| File Type | Description |
+|-----------|-------------|
+| `.fpk` file | fnOS application installation package |
+| `.sha256sum` file | SHA256 checksum for the installation package |
+
+Examples:
+- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk`
+- `qbittorrent-vuetorrent-5.1.4.1-test-arm64.fpk.sha256sum`
+
 ## 📄 License
 
 This project is open source under the [GPL-2.0](LICENSE) license.
