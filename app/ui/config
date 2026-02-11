@@ -1,0 +1,12 @@
+{
+    ".url": {
+        "qbittorrent.Application": {
+            "title": "qBittorrent",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "port": "8080",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}

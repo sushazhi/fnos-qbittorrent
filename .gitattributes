@@ -1,0 +1,28 @@
+# Force LF line endings for all files
+* text=auto eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Config files
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+manifest text eol=lf
+
+# Docs
+*.md text eol=lf
+*.txt text eol=lf
+
+# Images (binary)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+
+# Build artifacts (exclude from release archives)
+*.fpk export-ignore
+*.sha256sum export-ignore
+artifacts/ export-ignore

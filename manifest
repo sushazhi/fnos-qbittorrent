@@ -1,0 +1,27 @@
+appname = qbittorrent
+version = 5.1.4.1
+display_name = qBittorrent
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、队列管理。<br><br>✨ <b>默认启用VueTorrent</b>，现代美观，响应式设计。<br><br>📋 <b>默认信息：</b>端口8080，账号：admin，密码：adminadmin。<br>⚠️ <b>注意：</b>端口暂不支持修改。<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+
+# 系统要求
+platform = arm
+source = thirdparty
+
+# 开发者信息
+maintainer = qBittorrent
+maintainer_url = https://github.com/qbittorrent/qBittorrent
+distributor = yukihana
+distributor_url = https://github.com/sushazhi/fnos-qbittorrent
+
+# 安装控制
+ctl_stop = true
+
+# 端口配置
+service_port = 8080
+
+# 桌面图标配置
+desktop_uidir = ui
+desktop_applaunchname = qbittorrent.Application
+
+# 更新日志
+changelog = v5.1.4.1 - 添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）

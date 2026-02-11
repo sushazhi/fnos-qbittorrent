@@ -1,0 +1,10 @@
+#!/bin/bash
+# cmd/config_callback - qBittorrent配置回调脚本
+
+set -e
+
+echo "Applying qBittorrent configuration..."
+
+
+echo "qBittorrent configuration applied"
+exit 0

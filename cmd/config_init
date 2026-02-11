@@ -1,0 +1,11 @@
+#!/bin/bash
+# cmd/config_init - qBittorrent配置初始化脚本
+
+set -e
+
+echo "Initializing qBittorrent configuration..."
+
+# 此脚本保留用于将来扩展
+
+echo "qBittorrent configuration initialized"
+exit 0

@@ -1,0 +1,120 @@
+#!/bin/bash
+# cmd/upgrade_init - qBittorrent升级初始化脚本
+# 功能：升级前停止服务并备份数据
+
+set -e
+
+APP_NAME="qbittorrent"
+BIN_DIR="${TRIM_APPDEST}/bin"
+DATA_DIR="${TRIM_PKGVAR}"
+CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
+CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
+PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
+
+# 备份到shares目录（fnOS卸载/升级时保留）
+SHARE_DIR="/vol1/@appshare/qbittorrent"
+BACKUP_DIR="${SHARE_DIR}/.data_backup"
+BACKUP_INFO_FILE="${SHARE_DIR}/.backup_info"
+
+# 获取用户选择的数据处理方式
+# wizard_data_action 由 wizard/upgrade 传递：keep=保留数据，delete=删除数据
+DATA_ACTION="${wizard_data_action:-keep}"
+echo "User data action preference: $DATA_ACTION"
+
+echo "=================================="
+echo "qBittorrent Upgrade Started"
+echo "=================================="
+echo ""
+
+# 停止服务
+echo "[1/3] Stopping ${APP_NAME} service..."
+
+# 使用fnOS标准路径调用main脚本停止服务
+STOPPED=false
+if [ -x "${TRIM_APPDEST}/cmd/main" ]; then
+    "${TRIM_APPDEST}/cmd/main" stop && STOPPED=true || echo "Main stop failed or already stopped"
+elif [ -x "${TRIM_APPDEST}/../cmd/main" ]; then
+    "${TRIM_APPDEST}/../cmd/main" stop && STOPPED=true || echo "Main stop failed or already stopped"
+elif [ -f "$PID_FILE" ]; then
+    PID=$(cat "$PID_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
+        echo "Stopping process (PID: $PID)..."
+        kill "$PID" 2>/dev/null || true
+        
+        # 等待进程结束
+        TIMEOUT=30
+        while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
+            sleep 1
+            TIMEOUT=$((TIMEOUT - 1))
+        done
+        
+        # 强制终止如果还在运行
+        if ps -p "$PID" > /dev/null 2>&1; then
+            echo "Force killing process..."
+            kill -9 "$PID" 2>/dev/null || true
+        fi
+    fi
+fi
+
+# 清理PID文件
+rm -f "$PID_FILE"
+
+# 无论是否成功停止，都继续升级
+if [ "$STOPPED" = true ]; then
+    echo "Service stopped successfully"
+else
+    echo "Service was already stopped or stop failed, continuing upgrade"
+fi
+
+# 处理数据
+echo "[2/3] Processing data based on user preference..."
+
+if [ "$DATA_ACTION" = "delete" ]; then
+    # 用户选择删除所有数据
+    echo "User chose to delete all data during upgrade"
+    if [ -d "$DATA_DIR" ]; then
+        rm -rf "$DATA_DIR"
+        echo "Data directory removed: $DATA_DIR"
+    fi
+    # 清理可能存在的备份
+    rm -rf "${BACKUP_BASE_DIR}" 2>/dev/null || true
+else
+    # 用户选择保留数据 - 主动备份到持久化目录以防被fnOS清理
+    echo "User chose to keep data, backing up to persistent location..."
+
+    if [ -d "$DATA_DIR" ] && [ -n "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
+        # 创建备份目录
+        if ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
+            echo "Error: Failed to create backup directory" > "$ERROR_LOG"
+            exit 1
+        fi
+
+        # 复制所有数据到备份目录
+        if ! cp -a "$DATA_DIR"/* "$BACKUP_DIR/" 2>/dev/null; then
+            echo "Error: Failed to backup data" > "$ERROR_LOG"
+            exit 1
+        fi
+
+        # 验证备份
+        if [ -f "${BACKUP_DIR}/qBittorrent/config/qBittorrent.conf" ] || \
+           [ -d "${BACKUP_DIR}/qBittorrent" ] || \
+           [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+            echo "Data backed up successfully to: $BACKUP_DIR"
+            # 备份信息写入持久化位置
+            echo "BACKUP_DIR=$BACKUP_DIR" > "$BACKUP_INFO_FILE"
+            echo "Backup location recorded: $BACKUP_INFO_FILE"
+        else
+            echo "Error: Backup verification failed, data may be at risk!" > "$ERROR_LOG"
+            exit 1
+        fi
+    else
+        echo "No existing data to backup or data directory is empty"
+    fi
+fi
+
+echo ""
+echo "=================================="
+echo "qBittorrent upgrade initialized"
+echo "=================================="
+exit 0

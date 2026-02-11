@@ -1,0 +1,40 @@
+[
+  {
+    "stepTitle": "🚀 确认升级 qBittorrent",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "✨ <b>qBittorrent 版本升级</b>，请选择数据处理方式"
+      },
+      {
+        "type": "tips",
+        "helpText": "📋 <b>升级说明：</b><ul><li>升级前自动停止服务</li><li>升级后自动重启服务</li></ul>"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_data_action",
+        "label": "数据保留选项",
+        "initValue": "keep",
+        "options": [
+          { "label": "保留所有数据（推荐）- 种子、RSS订阅、配置等", "value": "keep" },
+          { "label": "删除所有数据 - 从全新状态开始", "value": "delete" }
+        ],
+        "rules": [
+          { "required": true, "message": "请选择数据保留选项" }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "📝 <b>注意事项：</b><ul><li>如新版本有重大变更，可能需要重新配置部分设置</li><li>升级过程中服务将短暂中断</li></ul>"
+      },
+      {
+        "type": "tips",
+        "helpText": "🔗 <b>版本更新内容：</b><a href='https://github.com/sushazhi/fnos-qbittorrent/releases' target='_blank'>查看更新日志</a>"
+      },
+      {
+        "type": "tips",
+        "helpText": "⚠️ <b>遇到问题？</b><a href='https://github.com/sushazhi/fnos-qbittorrent/issues' target='_blank'>报告问题</a>"
+      }
+    ]
+  }
+]

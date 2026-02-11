@@ -1,0 +1,28 @@
+#!/bin/bash
+# cmd/install_callback - qBittorrent安装后置脚本
+
+set -e
+
+APP_NAME="qbittorrent"
+BIN_DIR="${TRIM_APPDEST}/bin"
+ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
+
+echo "Running ${APP_NAME} install_callback..."
+
+# 设置可执行权限
+if ! chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null; then
+    echo "Warning: Failed to set executable permission on qbittorrent-nox"
+fi
+
+echo "=================================="
+echo "qBittorrent installation complete"
+echo "=================================="
+echo ""
+echo "NOTE: Data directories and configuration"
+echo "will be created on first start."
+echo ""
+echo "Start the application to initialize:"
+echo "  ${TRIM_APPDEST}/cmd/main start"
+echo ""
+echo "qBittorrent installed successfully"
+exit 0

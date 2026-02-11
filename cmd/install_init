@@ -1,0 +1,7 @@
+#!/bin/bash
+# cmd/install_init - qBittorrent安装初始化脚本
+# 注意：目录和配置创建由 main 脚本在首次启动时处理
+
+echo "qBittorrent install_init started"
+echo "Data directories will be created on first start by main script"
+exit 0

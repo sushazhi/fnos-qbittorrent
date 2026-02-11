@@ -1,0 +1,31 @@
+[
+  {
+    "stepTitle": "🚀 欢迎安装 qBittorrent",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "✨ <b>功能强大的BitTorrent下载工具</b>，默认启用VueTorrent现代界面"
+      },
+      {
+        "type": "tips",
+        "helpText": "📡 <b>核心功能：</b>DHT/PEX/LSD P2P网络、RSS订阅、搜索引擎、速度控制、WebUI远程访问"
+      },
+      {
+        "type": "tips",
+        "helpText": "🎨 <b>双WebUI设计：</b>默认VueTorrent，可在设置中切换回原生界面"
+      },
+      {
+        "type": "tips",
+        "helpText": "🔐 <b>访问信息：</b>地址 http://<NAS_IP>:8080，账号 admin，密码 adminadmin（请立即修改！）"
+      },
+      {
+        "type": "tips",
+        "helpText": "⚠️ <b>注意：</b>端口暂不支持修改，请使用默认8080端口"
+      },
+      {
+        "type": "tips",
+        "helpText": "🐛 <b>问题反馈：</b><a href='https://github.com/sushazhi/fnos-qbittorrent/issues' target='_blank'>GitHub Issues</a>"
+      }
+    ]
+  }
+]
