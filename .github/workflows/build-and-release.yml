@@ -325,8 +325,8 @@ jobs:
       - name: Publish Release with Changelog
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          # Read changelog from manifest
-          CHANGELOG=$(grep "^changelog" manifest | sed 's/changelog\s*=\s*//' | sed 's/<br>/\\n/g')
+          # Read changelog from manifest and convert <br> to actual newlines
+          CHANGELOG=$(grep "^changelog" manifest | sed 's/changelog\s*=\s*//' | sed 's/<br>/\n/g')
           
           echo "Publishing release..."
           # Note: github.ref_name already includes 'v' prefix (e.g., v5.1.4.1)
