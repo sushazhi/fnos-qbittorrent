@@ -330,7 +330,7 @@ jobs:
           
           echo "Publishing release..."
           gh release create "${{ github.ref_name }}" \
-            "qbittorrent-${APP_VERSION}-arm64.fpk" \
+            "qbittorrent-vuetorrent-${APP_VERSION}-arm64.fpk" \
             --title "qBittorrent for fnOS v${{ github.ref_name }}" \
             --notes "$CHANGELOG"
         env:
