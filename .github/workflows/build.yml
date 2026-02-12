@@ -322,12 +322,16 @@ jobs:
           ```
           EOF
 
-      - name: Release artifacts (for tags)
+      - name: Publish Release with Changelog
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            qbittorrent-${APP_VERSION}-arm64.fpk
-          generate_release_notes: true
+        run: |
+          # Read changelog from manifest
+          CHANGELOG=$(grep "^changelog" manifest | sed 's/changelog\s*=\s*//' | sed 's/<br>/\\n/g')
+          
+          echo "Publishing release..."
+          gh release create "${{ github.ref_name }}" \
+            "qbittorrent-${APP_VERSION}-arm64.fpk" \
+            --title "qBittorrent for fnOS v${{ github.ref_name }}" \
+            --notes "$CHANGELOG"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
