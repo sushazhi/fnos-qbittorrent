@@ -20,7 +20,6 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: 5.1.4.1
   QB_VERSION: "5.1.4"
   VUETORRENT_VERSION: "latest"
 
@@ -36,6 +35,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Read version from manifest
+        run: |
+          APP_VERSION=$(grep "^version\s*=" manifest | sed 's/version\s*=\s*//' | tr -d ' ')
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
+          echo "APP_VERSION=${APP_VERSION}"
 
       - name: Download qBittorrent ARM64 static binary from userdocs
         run: |
@@ -133,11 +138,6 @@ jobs:
             exit 1
           fi
 
-          # Read version from manifest
-          APP_VERSION=$(grep "^version\s*=" manifest | head -1 | sed 's/version\s*=\s*//' | tr -d ' ')
-          if [ -z "$APP_VERSION" ]; then
-            APP_VERSION="5.1.4"
-          fi
           echo "Injecting version: $APP_VERSION"
 
           # Inject script into index.html before </body>
