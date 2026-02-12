@@ -20,6 +20,7 @@
 
   const CACHE_KEY = 'qbittorrent_update_check';
   const IGNORE_KEY = 'qbittorrent_ignore_version';
+  const CLOSE_TIME_KEY = 'qbittorrent_update_close_time';
 
   // 调试模式
   const isDebug = new URLSearchParams(window.location.search).get('debug') === '1';
@@ -63,6 +64,28 @@
     } catch (e) {}
   }
 
+  function getCloseTime() {
+    try {
+      const closeTime = localStorage.getItem(CLOSE_TIME_KEY);
+      return closeTime ? parseInt(closeTime, 10) : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function setCloseTime() {
+    try {
+      localStorage.setItem(CLOSE_TIME_KEY, Date.now().toString());
+    } catch (e) {}
+  }
+
+  function shouldShowNotification() {
+    const closeTime = getCloseTime();
+    if (closeTime === 0) return true;
+    // 24小时内不显示
+    return Date.now() - closeTime >= 24 * 60 * 60 * 1000;
+  }
+
   function compareVersions(current, latest) {
     const cur = (current || '').split('.').map(n => parseInt(n, 10) || 0);
     const lat = (latest || '').split('.').map(n => parseInt(n, 10) || 0);
@@ -87,6 +110,12 @@
     // 检查是否已忽略此版本
     if (getIgnoredVersion() === updateInfo.latestVersion) {
       log('已忽略版本 ' + updateInfo.latestVersion);
+      return;
+    }
+
+    // 检查是否在24小时内关闭过
+    if (!shouldShowNotification()) {
+      log('24小时内已关闭通知，暂不显示');
       return;
     }
 
@@ -197,6 +226,8 @@
 
     // 绑定关闭事件
     notification.querySelector('.update-notification-close').onclick = function() {
+      setCloseTime();
+      log('用户关闭通知，24小时内不再显示');
       notification.remove();
     };
 

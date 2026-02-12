@@ -10,7 +10,6 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
 CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
-ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
 
 # 备份到shares目录（fnOS卸载/升级时保留）
 SHARE_DIR="/vol1/@appshare/qbittorrent"
@@ -30,22 +29,23 @@ echo ""
 # 停止服务
 echo "[1/3] Stopping ${APP_NAME} service..."
 
-# 使用fnOS标准路径调用main脚本停止服务
+# 使用绝对路径调用main脚本停止服务
+MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
 STOPPED=false
-if [ -x "${TRIM_APPDEST}/cmd/main" ]; then
-    "${TRIM_APPDEST}/cmd/main" stop && STOPPED=true || echo "Main stop failed or already stopped"
-elif [ -x "${TRIM_APPDEST}/../cmd/main" ]; then
-    "${TRIM_APPDEST}/../cmd/main" stop && STOPPED=true || echo "Main stop failed or already stopped"
+
+if [ -x "$MAIN_SCRIPT" ]; then
+    "$MAIN_SCRIPT" stop && STOPPED=true || echo "Main stop failed or already stopped"
 elif [ -f "$PID_FILE" ]; then
-    PID=$(cat "$PID_FILE")
-    if ps -p "$PID" > /dev/null 2>&1; then
+    # 如果脚本不存在，直接通过PID停止
+    PID=$(cat "$PID_FILE" 2>/dev/null)
+    if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
         echo "Stopping process (PID: $PID)..."
         kill "$PID" 2>/dev/null || true
         
-        # 等待进程结束
-        TIMEOUT=30
+        # 等待进程结束（最多10秒）
+        TIMEOUT=10
         while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
-            sleep 1
+            sleep 0.5
             TIMEOUT=$((TIMEOUT - 1))
         done
         
@@ -53,6 +53,7 @@ elif [ -f "$PID_FILE" ]; then
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "Force killing process..."
             kill -9 "$PID" 2>/dev/null || true
+            sleep 0.5
         fi
     fi
 fi
@@ -60,11 +61,18 @@ fi
 # 清理PID文件
 rm -f "$PID_FILE"
 
-# 无论是否成功停止，都继续升级
+# 验证服务是否已停止
+PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
+if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
+    echo "错误：服务停止失败，进程仍在运行（PID: $PID）" > "$TRIM_TEMP_LOGFILE"
+    echo "错误：无法停止正在运行的服务，升级已中止"
+    exit 1
+fi
+
 if [ "$STOPPED" = true ]; then
-    echo "Service stopped successfully"
+    echo "服务已成功停止"
 else
-    echo "Service was already stopped or stop failed, continuing upgrade"
+    echo "服务已处于停止状态"
 fi
 
 # 处理数据
@@ -86,13 +94,13 @@ else
     if [ -d "$DATA_DIR" ] && [ -n "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
         # 创建备份目录
         if ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
-            echo "Error: Failed to create backup directory" > "$ERROR_LOG"
+            echo "错误：创建备份目录失败" > "$TRIM_TEMP_LOGFILE"
             exit 1
         fi
 
         # 复制所有数据到备份目录
         if ! cp -a "$DATA_DIR"/* "$BACKUP_DIR/" 2>/dev/null; then
-            echo "Error: Failed to backup data" > "$ERROR_LOG"
+            echo "错误：备份数据失败" > "$TRIM_TEMP_LOGFILE"
             exit 1
         fi
 
@@ -105,7 +113,7 @@ else
             echo "BACKUP_DIR=$BACKUP_DIR" > "$BACKUP_INFO_FILE"
             echo "Backup location recorded: $BACKUP_INFO_FILE"
         else
-            echo "Error: Backup verification failed, data may be at risk!" > "$ERROR_LOG"
+            echo "错误：备份验证失败，数据可能存在风险" > "$TRIM_TEMP_LOGFILE"
             exit 1
         fi
     else

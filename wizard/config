@@ -1,0 +1,31 @@
+[
+  {
+    "stepTitle": "⚙️ qBittorrent 设置",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "修改应用配置参数，保存后将重启应用使配置生效"
+      },
+      {
+        "type": "text",
+        "field": "wizard_app_port",
+        "label": "应用端口",
+        "initValue": "8080",
+        "rules": [
+          {
+            "required": true,
+            "message": "请输入端口号"
+          },
+          {
+            "pattern": "^[0-9]+$",
+            "message": "端口号必须是数字"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "⚠️ <b>注意：</b>修改端口后应用将自动重启，请确保新端口未被其他应用占用"
+      }
+    ]
+  }
+]

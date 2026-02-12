@@ -4,39 +4,22 @@
 set -e
 
 APP_NAME="qbittorrent"
-echo "Uninstalling qBittorrent..."
+echo "正在卸载 qBittorrent..."
 
 # 获取用户选择的数据处理方式
 DATA_ACTION="${wizard_data_action:-keep}"
-echo "User data action preference: $DATA_ACTION"
+echo "用户数据处理方式: $DATA_ACTION"
 
-# 删除配置目录
-CONFIG_DIR="${TRIM_PKGETC}"
-echo "Checking CONFIG_DIR: $CONFIG_DIR"
-if [ -d "$CONFIG_DIR" ]; then
-    echo "Removing configuration directory: $CONFIG_DIR"
-    rm -rf "$CONFIG_DIR" 2>/dev/null || echo "Warning: Cannot remove CONFIG_DIR"
-fi
-
-# 删除 HOME 目录 - 权限错误被忽略
-HOME_DIR="${TRIM_PKGHOME}"
-echo "Checking HOME_DIR: $HOME_DIR"
-if [ -d "$HOME_DIR" ]; then
-    echo "Removing home directory: $HOME_DIR"
-    rm -rf "$HOME_DIR" 2>/dev/null || echo "Warning: Cannot remove HOME_DIR (permission denied)"
-fi
-
-# 根据用户选择处理数据目录
+# 根据用户选择处理数据目录（var 目录系统会保留，需要手动清理）
 DATA_DIR="${TRIM_PKGVAR}"
-echo "Checking DATA_DIR: $DATA_DIR"
 if [ -d "$DATA_DIR" ]; then
     if [ "$DATA_ACTION" = "delete" ]; then
-        echo "Removing data directory: $DATA_DIR"
-        rm -rf "$DATA_DIR" 2>/dev/null || echo "Warning: Cannot remove DATA_DIR"
+        echo "删除数据目录: $DATA_DIR"
+        rm -rf "$DATA_DIR" 2>/dev/null || echo "警告：无法删除数据目录"
     else
-        echo "Keeping data directory: $DATA_DIR"
+        echo "保留数据目录: $DATA_DIR"
     fi
 fi
 
-echo "qBittorrent uninstall initialized"
+echo "qBittorrent 卸载初始化完成"
 exit 0

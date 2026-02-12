@@ -10,33 +10,8 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
-# 错误日志文件（用于向用户展示错误信息）
-ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
-
-# 端口配置
-if [ -n "$TRIM_SERVICE_PORT" ]; then
-    WEBUI_PORT="$TRIM_SERVICE_PORT"
-else
-    WEBUI_PORT=8080
-fi
-
-# 检查环境变量 - 对于stop/status命令，尝试从脚本位置推断
-if [ -z "$TRIM_APPDEST" ]; then
-    SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)"
-    # 尝试从脚本路径推断 TRIM_APPDEST
-    # 格式: /var/apps/{appname}/cmd/main
-    if [[ "$SCRIPT_PATH" =~ /var/apps/([^/]+)/cmd ]]; then
-        export TRIM_APPDEST="/var/apps/${BASH_REMATCH[1]}"
-        export TRIM_PKGTMP="/var/tmp/${BASH_REMATCH[1]}"
-        export TRIM_PKGVAR="/var/lib/${BASH_REMATCH[1]}"
-        export TRIM_PKGETC="/etc/${BASH_REMATCH[1]}"
-        export TRIM_PKGHOME="/home/${BASH_REMATCH[1]}"
-        echo "Warning: Inferred paths from script location (TRIM_APPDEST=$TRIM_APPDEST)"
-    else
-        echo "Error: TRIM_APPDEST not set and cannot infer paths from script location."
-        exit 1
-    fi
-fi
+# 端口配置：优先使用向导变量，其次使用系统变量，最后使用默认值
+WEBUI_PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
 
 start() {
     # 检查是否已运行
@@ -59,7 +34,7 @@ start() {
 
     # 检查可执行文件
     if [ ! -x "$BIN_DIR/qbittorrent-nox" ]; then
-        echo "Error: qbittorrent-nox not found or not executable at $BIN_DIR/qbittorrent-nox" > "$ERROR_LOG"
+        echo "错误：未找到可执行文件 qbittorrent-nox，路径：$BIN_DIR/qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
         return 1
     fi
 
@@ -70,26 +45,28 @@ start() {
     if [ ! -f "$CONFIG_FILE" ]; then
         echo "Creating default configuration..."
 
-        cat > "$CONFIG_FILE" << 'EOF'
+        cat > "$CONFIG_FILE" << EOF
 [Preferences]
 General\Locale=zh_CN
 Downloads\SavePath=/vol1/1000/downloads/
 Downloads\TempPath=/vol1/1000/temp/
 WebUI\Address=*
-WebUI\Port=8080
+WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
 WebUI\Username=admin
 WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true
-WebUI\RootFolder=__VUETORRENT_ROOT__
+WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
-        # 替换为实际路径
-        sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE"
         echo "Default configuration created at $CONFIG_FILE"
     else
         echo "Using existing configuration: $CONFIG_FILE"
+        # 更新配置文件中的端口（格式：WebUI\Port=xxx）
+        # 删除旧端口行，在 [Preferences] 后插入新端口行
+        sed -i '/WebUI\\\\Port=/d' "$CONFIG_FILE"
+        sed -i "/\[Preferences\]/a WebUI\\\\Port=${WEBUI_PORT}" "$CONFIG_FILE"
     fi
 
     # 启动qBittorrent-nox
@@ -109,9 +86,9 @@ EOF
         echo "WebUI: http://$(hostname -I | awk '{print $1}'):${WEBUI_PORT}"
         return 0
     else
-        echo "Error: ${APP_NAME} failed to start." > "$ERROR_LOG"
+        echo "错误：${APP_NAME} 启动失败" > "$TRIM_TEMP_LOGFILE"
         if [ -f "$LOG_FILE" ]; then
-            tail -20 "$LOG_FILE" >> "$ERROR_LOG"
+            tail -20 "$LOG_FILE" >> "$TRIM_TEMP_LOGFILE"
         fi
         rm -f "$PID_FILE"
         return 1
@@ -119,18 +96,9 @@ EOF
 }
 
 stop() {
-    # 尝试多个可能的PID文件位置
-    PID_FILE=""
-    for path in "${TRIM_PKGTMP:-/var/tmp}/${APP_NAME}.pid" "/var/tmp/${APP_NAME}.pid"; do
-        if [ -f "$path" ]; then
-            PID_FILE="$path"
-            break
-        fi
-    done
-
     # 查找进程
     PID=""
-    if [ -n "$PID_FILE" ] && [ -f "$PID_FILE" ]; then
+    if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE" 2>/dev/null)
     fi
 
@@ -147,17 +115,18 @@ stop() {
     echo "Stopping ${APP_NAME} (PID: $PID)..."
     kill "$PID" 2>/dev/null || true
 
-    # 等待进程结束（最多30秒）
-    TIMEOUT=30
+    # 等待进程结束（最多10秒）
+    TIMEOUT=10
     while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
-        sleep 1
+        sleep 0.5
         TIMEOUT=$((TIMEOUT - 1))
     done
 
     # 强制终止如果还在运行
     if ps -p "$PID" > /dev/null 2>&1; then
-        echo "Process still running, forcing kill..."
+        echo "Forcing kill..."
         kill -9 "$PID" 2>/dev/null || true
+        sleep 0.5
     fi
 
     # 清理PID文件

@@ -4,7 +4,7 @@
             "title": "qBittorrent",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
-            "port": "8080",
+            "port": "${wizard_app_port}",
             "url": "/",
             "allUsers": true
         }

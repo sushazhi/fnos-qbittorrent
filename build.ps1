@@ -25,37 +25,89 @@ if (-not $Version) {
 $APP_VERSION = $Version
 $ARCH = "arm64"
 $BUILD_DIR = Join-Path $PROJECT_DIR ".local-build"
+$VERSION_FILE = Join-Path $BUILD_DIR "versions.json"
 
 $FNPACK_URL = "https://static2.fnnas.com/fnpack/fnpack-1.2.1-windows-amd64"
 $VUE_TORRENT_BASE = "https://github.com/VueTorrent/VueTorrent/releases/download"
 $QBT_SOURCE_URL = "https://github.com/qbittorrent/qBittorrent/archive/refs/tags"
+$VUE_VER = "2.31.3"
+$QBT_VER = "5.1.4"
+
+function Get-VersionInfo {
+    if (Test-Path $VERSION_FILE) {
+        try {
+            return Get-Content $VERSION_FILE -Raw | ConvertFrom-Json
+        } catch {
+            return @{}
+        }
+    }
+    return @{}
+}
+
+function Save-VersionInfo {
+    param($Component, $Version)
+    $versions = Get-VersionInfo
+    # Convert PSCustomObject to Hashtable if needed
+    if ($versions -is [System.Management.Automation.PSCustomObject]) {
+        $hash = @{}
+        $versions.PSObject.Properties | ForEach-Object { $hash[$_.Name] = $_.Value }
+        $versions = $hash
+    }
+    $versions[$Component] = $Version
+    $versions | ConvertTo-Json -Depth 10 | Set-Content $VERSION_FILE -Force
+}
+
+function Test-VersionMatch {
+    param($Component, $ExpectedVersion)
+    $versions = Get-VersionInfo
+    return ($versions.$Component -eq $ExpectedVersion)
+}
 
 function Download-File {
-    param($Url, $OutFile, $Description)
+    param($Url, $OutFile, $Description, $Component, $Version)
+
+    # Check version match
+    if ((-not $ForceDownload) -and (Test-Path $OutFile) -and ((Get-Item $OutFile).Length -gt 0)) {
+        if (Test-VersionMatch -Component $Component -ExpectedVersion $Version) {
+            Write-Host "  Using cached $Description (version $Version)" -ForegroundColor Green
+            return $true
+        } else {
+            Write-Host "  Version mismatch for $Description (expected: $Version, cached: $((Get-VersionInfo).$Component)), re-downloading..." -ForegroundColor Yellow
+        }
+    }
+    
     Write-Host "  Downloading $Description..." -ForegroundColor Yellow
     $proxyPattern = "https://hk.gh-proxy.org/{0}"
     $downloadUrl = $Url
     if ($Url -match "github\.com") {
         $downloadUrl = $proxyPattern -f $Url.Replace("https://", "")
     }
+    
+    # Try curl first
     $curlPath = (Get-Command curl -ErrorAction SilentlyContinue).Path
     if ($curlPath) {
         $p = Start-Process -FilePath $curlPath -ArgumentList "-L", "-o", $OutFile, $downloadUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
         if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
             Write-Host "  Downloaded $Description (via proxy)" -ForegroundColor Green
+            Save-VersionInfo -Component $Component -Version $Version
             return $true
         }
     }
+    
+    # Fallback to Invoke-WebRequest
     try {
         Invoke-WebRequest -Uri $downloadUrl -OutFile $OutFile -UseBasicParsing -TimeoutSec 180
         if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
             Write-Host "  Downloaded $Description (via proxy)" -ForegroundColor Green
+            Save-VersionInfo -Component $Component -Version $Version
             return $true
         }
     } catch {
         Write-Host "  ERROR: Failed to download $Description" -ForegroundColor Red
         return $false
     }
+    
+    return $false
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -84,36 +136,28 @@ Write-Host "  Project files copied" -ForegroundColor Green
 Write-Host "[3/6] Preparing qBittorrent-nox..." -ForegroundColor Yellow
 $daemonCache = Join-Path $BUILD_DIR "qbittorrent-nox"
 $daemonTarget = "$BUILD_DIR\app\bin\qbittorrent-nox"
-if ((-not $ForceDownload) -and (Test-Path $daemonCache) -and ((Get-Item $daemonCache).Length -gt 0)) {
-    Write-Host "  Using cached binary" -ForegroundColor Green
-    Copy-Item $daemonCache $daemonTarget -Force
-} else {
-    $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${APP_VERSION}_v2.0.11/aarch64-qbittorrent-nox"
-    $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $APP_VERSION"
-    if (-not $success) {
-        $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${APP_VERSION}_v1.2.20/aarch64-qbittorrent-nox"
-        $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $APP_VERSION"
-        if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
-    }
-    Copy-Item $daemonCache $daemonTarget -Force
+$url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/aarch64-qbittorrent-nox"
+$success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER" -Component "qbittorrent-nox" -Version $QBT_VER
+if (-not $success) {
+    $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v1.2.20/aarch64-qbittorrent-nox"
+    $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER" -Component "qbittorrent-nox" -Version $QBT_VER
+    if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
 }
+Copy-Item $daemonCache $daemonTarget -Force
 
 Write-Host "[4/6] Preparing VueTorrent WebUI..." -ForegroundColor Yellow
-$VUE_VER = "2.31.3"
 $vueCache = Join-Path $BUILD_DIR "vuetorrent.zip"
 $vueTargetDir = "$BUILD_DIR\app\ui\vuetorrent"
 
-# Check if already extracted (vue has index.html in public/, native has files in public/)
-$vueReady = (Test-Path "$vueTargetDir\public\index.html")
+# Check if already extracted and version matches
+$vueReady = (Test-Path "$vueTargetDir\public\index.html") -and (Test-VersionMatch -Component "vuetorrent" -ExpectedVersion $VUE_VER)
 
-if (-not $ForceDownload -and $vueReady) {
-    Write-Host "  Using cached VueTorrent" -ForegroundColor Green
+if ((-not $ForceDownload) -and $vueReady) {
+    Write-Host "  Using cached VueTorrent $VUE_VER" -ForegroundColor Green
 } else {
     # Download if needed
-    if (-not (Test-Path $vueCache) -or ((Get-Item $vueCache).Length -lt 1000)) {
-        $url = "$VUE_TORRENT_BASE/v$VUE_VER/vuetorrent.zip"
-        if (-not (Download-File -Url $url -OutFile $vueCache -Description "VueTorrent $VUE_VER")) { exit 1 }
-    }
+    $url = "$VUE_TORRENT_BASE/v$VUE_VER/vuetorrent.zip"
+    if (-not (Download-File -Url $url -OutFile $vueCache -Description "VueTorrent $VUE_VER" -Component "vuetorrent" -Version $VUE_VER)) { exit 1 }
 
     Write-Host "  Extracting VueTorrent..." -ForegroundColor Gray
     $tempDir = Join-Path $BUILD_DIR "temp-vuetorrent"
@@ -133,21 +177,18 @@ if (-not $ForceDownload -and $vueReady) {
 }
 
 Write-Host "[5/6] Preparing qBittorrent Native WebUI..." -ForegroundColor Yellow
-$QBT_VER = "5.1.4"
 $nativeCache = Join-Path $BUILD_DIR "qb-$QBT_VER.zip"
 $nativeTargetDir = "$BUILD_DIR\app\ui\www"
 
-# Check if already extracted (native WebUI has files in public/, vue has public/)
-$nativeReady = (Test-Path "$nativeTargetDir\public\index.html") -or (Test-Path "$nativeTargetDir\.gitignore")
+# Check if already extracted and version matches
+$nativeReady = ((Test-Path "$nativeTargetDir\public\index.html") -or (Test-Path "$nativeTargetDir\.gitignore")) -and (Test-VersionMatch -Component "qbittorrent-webui" -ExpectedVersion $QBT_VER)
 
-if (-not $ForceDownload -and $nativeReady) {
-    Write-Host "  Using cached native WebUI" -ForegroundColor Green
+if ((-not $ForceDownload) -and $nativeReady) {
+    Write-Host "  Using cached native WebUI $QBT_VER" -ForegroundColor Green
 } else {
     # Download if needed
-    if (-not (Test-Path $nativeCache) -or ((Get-Item $nativeCache).Length -lt 1000)) {
-        $url = "$QBT_SOURCE_URL/release-$QBT_VER.zip"
-        if (-not (Download-File -Url $url -OutFile $nativeCache -Description "qBittorrent $QBT_VER source")) { exit 1 }
-    }
+    $url = "$QBT_SOURCE_URL/release-$QBT_VER.zip"
+    if (-not (Download-File -Url $url -OutFile $nativeCache -Description "qBittorrent $QBT_VER source" -Component "qbittorrent-webui" -Version $QBT_VER)) { exit 1 }
 
     Write-Host "  Extracting native WebUI..." -ForegroundColor Gray
     $tempDir = Join-Path $BUILD_DIR "temp-qbt"
@@ -203,12 +244,13 @@ if (Test-Path $vueIndexHtml) {
 }
 
 Write-Host "[6/6] Building package..." -ForegroundColor Yellow
+$FNPACK_VER = "1.2.1"
 $FNPACK_FILE = $FNPACK_URL.Substring($FNPACK_URL.LastIndexOf('/') + 1)
 $fnpackPath = Join-Path $BUILD_DIR $FNPACK_FILE
-if ((-not $ForceDownload) -and (Test-Path $fnpackPath)) {
-    Write-Host "  Using cached fnpack" -ForegroundColor Green
+if ((-not $ForceDownload) -and (Test-Path $fnpackPath) -and (Test-VersionMatch -Component "fnpack" -ExpectedVersion $FNPACK_VER)) {
+    Write-Host "  Using cached fnpack $FNPACK_VER" -ForegroundColor Green
 } else {
-    if (-not (Download-File -Url $FNPACK_URL -OutFile $fnpackPath -Description "fnpack")) { exit 1 }
+    if (-not (Download-File -Url $FNPACK_URL -OutFile $fnpackPath -Description "fnpack" -Component "fnpack" -Version $FNPACK_VER)) { exit 1 }
 }
 
 Remove-Item "$BUILD_DIR\qbittorrent.fpk" -Force -ErrorAction SilentlyContinue

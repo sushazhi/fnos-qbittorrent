@@ -5,7 +5,6 @@ set -e
 
 APP_NAME="qbittorrent"
 BIN_DIR="${TRIM_APPDEST}/bin"
-ERROR_LOG="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}_error.log}"
 
 echo "Running ${APP_NAME} install_callback..."
 
@@ -22,7 +21,5 @@ echo "NOTE: Data directories and configuration"
 echo "will be created on first start."
 echo ""
 echo "Start the application to initialize:"
-echo "  ${TRIM_APPDEST}/cmd/main start"
-echo ""
 echo "qBittorrent installed successfully"
 exit 0

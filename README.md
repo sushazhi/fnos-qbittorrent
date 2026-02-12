@@ -5,7 +5,7 @@
 
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.1-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
@@ -25,6 +25,7 @@
 | 📁 **文件管理** | 顺序下载、选择性下载、文件优先级 |
 | 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
 | 🔔 **更新检测** | VueTorrent 界面自动检测 GitHub 最新版本 |
+| 🔧 **端口配置** | 安装或应用设置中自定义端口 |
 
 ---
 
@@ -43,20 +44,20 @@
 
 ---
 
-## 📦 安装说明
+## 📦 安装与更新
 
-> 📌 **注意**：本应用目前**仅支持ARM64架构**（如飞牛NAS ARM版）
+> 📌 **注意**：本应用目前**仅支持ARM64架构**，系统要求 **fnOS v1.1.19+**。
 
-### 手动安装
+### 手动安装/更新
 
 1. 打开 **应用中心**
-2. 点击左下角 **手动安装**
-3. 选择 `qbittorrent-vuetorrent-5.1.4-arm64.fpk` 安装包
+2. 左下角点击 **手动安装**
+3. 选择 `qbittorrent-vuetorrent-5.1.4.1-arm64.fpk` 文件
 
+或使用命令行：
 
 ```bash
-# 命令行安装（可选）
-appcenter-cli install-local qbittorrent-vuetorrent-5.1.4-arm64.fpk
+appcenter-cli install-local qbittorrent-vuetorrent-5.1.4.1-arm64.fpk
 ```
 
 ---
@@ -136,12 +137,23 @@ chmod +x build.sh
 
 | 项目 | 默认值 |
 |------|--------|
-| 访问地址 | `http://<你的NAS_IP>:8080` |
+| 系统版本 | fnOS v1.1.19+ |
+| 访问地址 | `http://<你的NAS_IP>:<端口>` |
 | 默认用户名 | `admin` |
 | 默认密码 | `adminadmin` |
-| WebUI端口 | `8080` (暂不支持修改) |
+| 默认端口 | `8080` (可在安装或应用设置中修改) |
 
 > ⚠️ **安全提示**：请首次登录后立即修改默认密码！
+> 
+> 📌 **端口修改**：安装或应用设置中可自定义端口，**请勿在WebUI中修改**，否则飞牛iframe窗口无法访问UI。
+
+---
+
+## 📋 更新日志
+
+| 版本 | 更新内容 |
+|------|----------|
+| v5.1.4.1 | 支持安装和应用设置中修改端口（请勿在WebUI中修改端口）<br>添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）<br>默认以应用用户的身份运行 |
 
 ---
 

@@ -16,15 +16,27 @@
       },
       {
         "type": "tips",
-        "helpText": "🔐 <b>访问信息：</b>地址 http://<NAS_IP>:8080，账号 admin，密码 adminadmin（请立即修改！）"
-      },
-      {
-        "type": "tips",
-        "helpText": "⚠️ <b>注意：</b>端口暂不支持修改，请使用默认8080端口"
+        "helpText": "🔐 <b>默认访问信息：</b>账号 admin，密码 adminadmin（请立即修改！）"
       },
       {
         "type": "tips",
         "helpText": "🐛 <b>问题反馈：</b><a href='https://github.com/sushazhi/fnos-qbittorrent/issues' target='_blank'>GitHub Issues</a>"
+      },
+      {
+        "type": "text",
+        "field": "wizard_app_port",
+        "label": "应用端口",
+        "initValue": "8080",
+        "rules": [
+          {
+            "required": true,
+            "message": "请输入端口号"
+          },
+          {
+            "pattern": "^[0-9]+$",
+            "message": "端口号必须是数字"
+          }
+        ]
       }
     ]
   }
