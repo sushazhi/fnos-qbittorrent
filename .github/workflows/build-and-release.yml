@@ -1,4 +1,4 @@
-name: Build qBittorrent for fnOS
+name: Build and Release qBittorrent for fnOS
 
 on:
   push:
