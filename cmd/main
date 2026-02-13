@@ -1,8 +1,6 @@
 #!/bin/bash
 # cmd/main - qBittorrent应用生命周期管理脚本
 
-set -e
-
 APP_NAME="qbittorrent"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
@@ -10,41 +8,38 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
-# 端口配置：优先使用向导变量，其次使用系统变量，最后使用默认值
+# 端口配置
 WEBUI_PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
 
-start() {
+case "$1" in
+start)
     # 检查是否已运行
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "${APP_NAME} is already running (PID: $PID)"
-            return 0
+            exit 0
         fi
-        # PID文件存在但进程不存在，清理
         rm -f "$PID_FILE"
     fi
 
     # 创建必要的目录
-    mkdir -p "$(dirname "$PID_FILE")"
+    mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config"
 
     # 设置环境变量
     export QT_QPA_PLATFORM=offscreen
-    # 静态二进制不需要 LD_LIBRARY_PATH
 
     # 检查可执行文件
-    if [ ! -x "$BIN_DIR/qbittorrent-nox" ]; then
-        echo "错误：未找到可执行文件 qbittorrent-nox，路径：$BIN_DIR/qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
-        return 1
+    if [ ! -f "$BIN_DIR/qbittorrent-nox" ]; then
+        echo "错误：未找到可执行文件 qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
+        exit 1
     fi
-
-    # 创建配置目录
-    mkdir -p "${DATA_DIR}/qBittorrent/config"
+    if [ ! -x "$BIN_DIR/qbittorrent-nox" ]; then
+        chmod +x "$BIN_DIR/qbittorrent-nox"
+    fi
 
     # 只在配置文件不存在时创建默认配置
     if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Creating default configuration..."
-
         cat > "$CONFIG_FILE" << EOF
 [Preferences]
 General\Locale=zh_CN
@@ -60,13 +55,6 @@ WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
-        echo "Default configuration created at $CONFIG_FILE"
-    else
-        echo "Using existing configuration: $CONFIG_FILE"
-        # 更新配置文件中的端口（格式：WebUI\Port=xxx）
-        # 删除旧端口行，在 [Preferences] 后插入新端口行
-        sed -i '/WebUI\\\\Port=/d' "$CONFIG_FILE"
-        sed -i "/\[Preferences\]/a WebUI\\\\Port=${WEBUI_PORT}" "$CONFIG_FILE"
     fi
 
     # 启动qBittorrent-nox
@@ -79,82 +67,75 @@ EOF
     PID=$!
     echo $PID > "$PID_FILE"
 
-    # 等待确认进程启动
     sleep 3
     if ps -p "$PID" > /dev/null 2>&1; then
-        echo "${APP_NAME} started successfully (PID: $PID)"
-        echo "WebUI: http://$(hostname -I | awk '{print $1}'):${WEBUI_PORT}"
-        return 0
+        echo "${APP_NAME} started (PID: $PID)"
+        exit 0
     else
+        # 检查是否是端口占用问题
+        if [ -f "$LOG_FILE" ]; then
+            if grep -qi "port.*already\|bind.*failed\|address.*in.*use" "$LOG_FILE" 2>/dev/null; then
+                echo "错误：端口 ${WEBUI_PORT} 被其他程序占用，请更换端口后重试" > "$TRIM_TEMP_LOGFILE"
+                rm -f "$PID_FILE"
+                exit 1
+            fi
+        fi
         echo "错误：${APP_NAME} 启动失败" > "$TRIM_TEMP_LOGFILE"
         if [ -f "$LOG_FILE" ]; then
             tail -20 "$LOG_FILE" >> "$TRIM_TEMP_LOGFILE"
         fi
         rm -f "$PID_FILE"
-        return 1
+        exit 1
     fi
-}
+    ;;
 
-stop() {
+stop)
     # 查找进程
     PID=""
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE" 2>/dev/null)
     fi
-
-    # 如果PID文件无效，查找进程
     if [ -z "$PID" ] || ! ps -p "$PID" > /dev/null 2>&1; then
         PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
     fi
 
     if [ -z "$PID" ]; then
         echo "${APP_NAME} is not running"
-        return 0
+        exit 0
     fi
 
     echo "Stopping ${APP_NAME} (PID: $PID)..."
     kill "$PID" 2>/dev/null || true
 
-    # 等待进程结束（最多10秒）
     TIMEOUT=10
     while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
         sleep 0.5
         TIMEOUT=$((TIMEOUT - 1))
     done
 
-    # 强制终止如果还在运行
     if ps -p "$PID" > /dev/null 2>&1; then
-        echo "Forcing kill..."
         kill -9 "$PID" 2>/dev/null || true
-        sleep 0.5
     fi
 
-    # 清理PID文件
     rm -f "${TRIM_PKGTMP}/${APP_NAME}.pid" 2>/dev/null
-    rm -f "/var/tmp/${APP_NAME}.pid" 2>/dev/null
-
     echo "${APP_NAME} stopped"
-    return 0
-}
+    exit 0
+    ;;
 
-restart() {
-    stop
+restart)
+    "$0" stop
     sleep 2
-    start
-}
+    "$0" start
+    ;;
 
-status() {
-    # 检查进程是否运行
+status)
     RUNNING=false
-
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
             RUNNING=true
         fi
     fi
-
-    # 如果PID文件无效，查找进程
     if [ "$RUNNING" = false ]; then
         PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
         if [ -n "$PID" ]; then
@@ -164,35 +145,15 @@ status() {
 
     if [ "$RUNNING" = true ]; then
         echo "${APP_NAME} is running (PID: $PID)"
-        return 0
+        exit 0
+    else
+        echo "${APP_NAME} is not running"
+        exit 3
     fi
+    ;;
 
-    echo "${APP_NAME} is not running"
-    return 3
-}
-
-case "$1" in
-    start)
-        start
-        ;;
-    stop)
-        stop
-        ;;
-    restart)
-        restart
-        ;;
-    status)
-        status
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|restart|status}"
-        echo ""
-        echo "Environment Variables:"
-        echo "  TRIM_APPDEST=$TRIM_APPDEST"
-        echo "  TRIM_PKGETC=$TRIM_PKGETC"
-        echo "  TRIM_PKGVAR=$TRIM_PKGVAR"
-        echo "  TRIM_PKGHOME=$TRIM_PKGHOME"
-        echo "  TRIM_PKGTMP=$TRIM_PKGTMP"
-        exit 1
-        ;;
+*)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 1
+    ;;
 esac

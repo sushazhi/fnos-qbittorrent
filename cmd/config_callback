@@ -1,6 +1,6 @@
 #!/bin/bash
 # cmd/config_callback - qBittorrent配置回调脚本
-# 功能：应用配置变更，更新端口设置并重启服务
+# 功能：应用配置变更，更新端口设置和UI类型并重启服务
 
 set -e
 
@@ -9,12 +9,34 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
+UI_CONFIG_FILE="${TRIM_APPDEST}/ui/config"
 
 echo "正在应用 qBittorrent 配置..."
 
-# 获取新的端口配置（从向导传递）
+# 获取端口配置（从向导传递）
 NEW_PORT="${wizard_app_port:-8080}"
 echo "配置端口: $NEW_PORT"
+
+# 获取UI类型配置（从向导传递）
+UI_TYPE="${wizard_ui_type:-vuetorrent}"
+echo "界面类型: $UI_TYPE"
+
+# 根据UI类型设置对应的mode
+case "$UI_TYPE" in
+    vuetorrent)
+        UI_MODE="iframe"
+        ALT_UI_ENABLED="true"
+        ;;
+    native)
+        UI_MODE="url"
+        ALT_UI_ENABLED="false"
+        ;;
+    *)
+        echo "警告：未知的UI类型 $UI_TYPE，使用默认值 iframe"
+        UI_MODE="iframe"
+        ALT_UI_ENABLED="true"
+        ;;
+esac
 
 # 如果应用正在运行，先停止
 if [ -f "$PID_FILE" ]; then
@@ -26,18 +48,46 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
-# 更新配置文件中的端口
+# 更新qBittorrent配置文件
 if [ -f "$CONFIG_FILE" ]; then
-    echo "更新配置文件端口..."
-    if grep -q "^WebUI\\\\Port=" "$CONFIG_FILE"; then
-        sed -i "s/^WebUI\\\\Port=.*/WebUI\\\\Port=${NEW_PORT}/" "$CONFIG_FILE"
+    echo "更新qBittorrent配置文件..."
+    
+    # 更新端口
+    if grep -q "^WebUI\\Port=" "$CONFIG_FILE"; then
+        sed -i "s/^WebUI\\Port=.*/WebUI\\Port=${NEW_PORT}/" "$CONFIG_FILE"
     else
-        echo "WebUI\\\\Port=${NEW_PORT}" >> "$CONFIG_FILE"
+        echo "WebUI\Port=${NEW_PORT}" >> "$CONFIG_FILE"
     fi
-    echo "配置文件已更新"
+    
+    # 更新备用UI设置
+    if grep -q "^WebUI\\AlternativeUIEnabled=" "$CONFIG_FILE"; then
+        sed -i "s/^WebUI\\AlternativeUIEnabled=.*/WebUI\\AlternativeUIEnabled=${ALT_UI_ENABLED}/" "$CONFIG_FILE"
+    else
+        echo "WebUI\AlternativeUIEnabled=${ALT_UI_ENABLED}" >> "$CONFIG_FILE"
+    fi
+    
+    echo "qBittorrent配置文件已更新"
 else
     echo "警告：配置文件不存在，将在首次启动时创建"
 fi
+
+# 更新桌面入口配置
+echo "更新桌面入口配置..."
+cat > "$UI_CONFIG_FILE" << UIEOF
+{
+    ".url": {
+        "qbittorrent.Application": {
+            "title": "qBittorrent",
+            "icon": "images/icon_{0}.png",
+            "type": "${UI_MODE}",
+            "port": "${NEW_PORT}",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}
+UIEOF
+echo "桌面入口配置已更新: ${UI_MODE} 模式"
 
 # 重新启动应用
 echo "正在重启应用..."

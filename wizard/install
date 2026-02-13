@@ -12,11 +12,11 @@
       },
       {
         "type": "tips",
-        "helpText": "🎨 <b>双WebUI设计：</b>默认VueTorrent，可在设置中切换回原生界面"
+        "helpText": "🔐 <b><span style='color:red'>默认访问信息：</span></b><span style='color:red'><b>账号 admin，密码 adminadmin</b></span>（请立即修改！）"
       },
       {
         "type": "tips",
-        "helpText": "🔐 <b>默认访问信息：</b>账号 admin，密码 adminadmin（请立即修改！）"
+        "helpText": "⚙️ <b>端口/UI修改：</b>请在<b>应用设置</b>中修改，<b>请勿在WebUI中修改</b>"
       },
       {
         "type": "tips",
@@ -35,6 +35,41 @@
           {
             "pattern": "^[0-9]+$",
             "message": "端口号必须是数字"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "stepTitle": "🎨 选择 WebUI 界面",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行<br>✓ 适合大多数用户"
+      },
+      {
+        "type": "tips",
+        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需要在独立窗口中打开<br>✗ 不适合在 fnOS iframe 中运行"
+      },
+      {
+        "type": "radio",
+        "field": "wizard_ui_type",
+        "label": "界面类型",
+        "initValue": "vuetorrent",
+        "options": [
+          {
+            "label": "VueTorrent - 现代界面（在 fnOS 中运行）",
+            "value": "vuetorrent"
+          },
+          {
+            "label": "原生 WebUI - 经典界面（在新标签页打开）",
+            "value": "native"
+          }
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择界面类型"
           }
         ]
       }

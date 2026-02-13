@@ -7,6 +7,26 @@
         "helpText": "修改应用配置参数，保存后将重启应用使配置生效"
       },
       {
+        "type": "radio",
+        "field": "wizard_ui_type",
+        "label": "界面类型",
+        "initValue": "vuetorrent",
+        "options": [
+          {"label": "VueTorrent (推荐)", "value": "vuetorrent"},
+          {"label": "qBittorrent 原生", "value": "native"}
+        ],
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择界面类型"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "💡 <b>VueTorrent</b>：现代美观界面，默认在应用窗口中打开<br/>💡 <b>原生界面</b>：轻量快速，需要新标签页打开"
+      },
+      {
         "type": "text",
         "field": "wizard_app_port",
         "label": "应用端口",

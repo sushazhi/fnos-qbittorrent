@@ -115,13 +115,13 @@ Write-Host "  qBittorrent for fnOS - Local Build" -ForegroundColor Cyan
 Write-Host "  Version: $APP_VERSION" -ForegroundColor Gray
 Write-Host "========================================" -ForegroundColor Cyan
 
-Write-Host "[1/6] Setting up build directory..." -ForegroundColor Yellow
-@("app\bin", "app\ui\vuetorrent", "app\ui\www", "cmd", "config", "wizard") | ForEach-Object {
+Write-Host "[1/5] Setting up build directory..." -ForegroundColor Yellow
+@("app\bin", "app\ui\vuetorrent", "cmd", "config", "wizard") | ForEach-Object {
     New-Item -ItemType Directory -Force -Path (Join-Path $BUILD_DIR $_) | Out-Null
 }
 Write-Host "  Build directory ready" -ForegroundColor Green
 
-Write-Host "[2/6] Copying project files..." -ForegroundColor Yellow
+Write-Host "[2/5] Copying project files..." -ForegroundColor Yellow
 Copy-Item "$PROJECT_DIR\cmd\*" "$BUILD_DIR\cmd\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\config\*" "$BUILD_DIR\config\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\wizard\*" "$BUILD_DIR\wizard\" -Recurse -Force
@@ -131,9 +131,10 @@ Copy-Item "$PROJECT_DIR\manifest" "$BUILD_DIR\" -Force
 }
 if (Test-Path "$PROJECT_DIR\app\ui\config") { Copy-Item "$PROJECT_DIR\app\ui\config" "$BUILD_DIR\app\ui\" -Force }
 if (Test-Path "$PROJECT_DIR\app\ui\images") { Copy-Item "$PROJECT_DIR\app\ui\images" "$BUILD_DIR\app\ui\" -Recurse -Force }
+if (Test-Path "$PROJECT_DIR\app\ui\index.html") { Copy-Item "$PROJECT_DIR\app\ui\index.html" "$BUILD_DIR\app\ui\" -Force }
 Write-Host "  Project files copied" -ForegroundColor Green
 
-Write-Host "[3/6] Preparing qBittorrent-nox..." -ForegroundColor Yellow
+Write-Host "[3/5] Preparing qBittorrent-nox..." -ForegroundColor Yellow
 $daemonCache = Join-Path $BUILD_DIR "qbittorrent-nox"
 $daemonTarget = "$BUILD_DIR\app\bin\qbittorrent-nox"
 $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/aarch64-qbittorrent-nox"
@@ -145,7 +146,7 @@ if (-not $success) {
 }
 Copy-Item $daemonCache $daemonTarget -Force
 
-Write-Host "[4/6] Preparing VueTorrent WebUI..." -ForegroundColor Yellow
+Write-Host "[4/5] Preparing VueTorrent WebUI..." -ForegroundColor Yellow
 $vueCache = Join-Path $BUILD_DIR "vuetorrent.zip"
 $vueTargetDir = "$BUILD_DIR\app\ui\vuetorrent"
 
@@ -176,37 +177,6 @@ if ((-not $ForceDownload) -and $vueReady) {
     Write-Host "  VueTorrent ready" -ForegroundColor Green
 }
 
-Write-Host "[5/6] Preparing qBittorrent Native WebUI..." -ForegroundColor Yellow
-$nativeCache = Join-Path $BUILD_DIR "qb-$QBT_VER.zip"
-$nativeTargetDir = "$BUILD_DIR\app\ui\www"
-
-# Check if already extracted and version matches
-$nativeReady = ((Test-Path "$nativeTargetDir\public\index.html") -or (Test-Path "$nativeTargetDir\.gitignore")) -and (Test-VersionMatch -Component "qbittorrent-webui" -ExpectedVersion $QBT_VER)
-
-if ((-not $ForceDownload) -and $nativeReady) {
-    Write-Host "  Using cached native WebUI $QBT_VER" -ForegroundColor Green
-} else {
-    # Download if needed
-    $url = "$QBT_SOURCE_URL/release-$QBT_VER.zip"
-    if (-not (Download-File -Url $url -OutFile $nativeCache -Description "qBittorrent $QBT_VER source" -Component "qbittorrent-webui" -Version $QBT_VER)) { exit 1 }
-
-    Write-Host "  Extracting native WebUI..." -ForegroundColor Gray
-    $tempDir = Join-Path $BUILD_DIR "temp-qbt"
-    Expand-Archive -Path $nativeCache -DestinationPath $tempDir -Force
-
-    # Clean and create target
-    if (Test-Path $nativeTargetDir) { Remove-Item $nativeTargetDir -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path $nativeTargetDir | Out-Null
-
-    # Extract: qBittorrent-release-VERSION/src/webui/www/* -> app/ui/www/
-    if (Test-Path "$tempDir\qBittorrent-release-$QBT_VER\src\webui\www") {
-        Copy-Item "$tempDir\qBittorrent-release-$QBT_VER\src\webui\www\*" $nativeTargetDir -Recurse -Force
-    }
-
-    Remove-Item $tempDir -Recurse -Force
-    Write-Host "  Native WebUI ready" -ForegroundColor Green
-}
-
 # Copy update-check.js to VueTorrent public directory (before injection)
 $vuePublicDir = "$BUILD_DIR\app\ui\vuetorrent\public"
 if (Test-Path "$PROJECT_DIR\app\ui\update-check.js") {
@@ -215,7 +185,7 @@ if (Test-Path "$PROJECT_DIR\app\ui\update-check.js") {
 }
 
 # Inject update check into WebUIs
-Write-Host "[5.5/6] Injecting update check into WebUIs..." -ForegroundColor Yellow
+Write-Host "[4.5/5] Injecting update check into WebUIs..." -ForegroundColor Yellow
 
 # Prepare injection script
 $injectScript = @"
@@ -243,7 +213,7 @@ if (Test-Path $vueIndexHtml) {
     Write-Host "  Warning: VueTorrent index.html not found" -ForegroundColor Yellow
 }
 
-Write-Host "[6/6] Building package..." -ForegroundColor Yellow
+Write-Host "[5/5] Building package..." -ForegroundColor Yellow
 $FNPACK_VER = "1.2.1"
 $FNPACK_FILE = $FNPACK_URL.Substring($FNPACK_URL.LastIndexOf('/') + 1)
 $fnpackPath = Join-Path $BUILD_DIR $FNPACK_FILE

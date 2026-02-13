@@ -60,28 +60,10 @@ jobs:
           echo "Checking binary version..."
           ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
 
-      - name: Download and prepare WebUI with VueTorrent
+      - name: Download and prepare VueTorrent WebUI
         run: |
-          echo "=== Download WebUI with VueTorrent ==="
+          echo "=== Download VueTorrent WebUI ==="
           
-          # Download native qBittorrent WebUI
-          echo "Downloading qBittorrent ${QB_VERSION} source..."
-          wget -q "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-${QB_VERSION}.tar.gz" -O qb-${QB_VERSION}.tar.gz
-
-          if [ ! -s qb-${QB_VERSION}.tar.gz ]; then
-            echo "ERROR: Failed to download qBittorrent source"
-            exit 1
-          fi
-
-          echo "Extracting source..."
-          tar xf qb-${QB_VERSION}.tar.gz
-
-          echo "Checking WebUI www directory..."
-          if [ ! -d "qBittorrent-release-${QB_VERSION}/src/webui/www" ]; then
-            echo "ERROR: WebUI www directory not found"
-            exit 1
-          fi
-
           # Download VueTorrent
           echo "Downloading VueTorrent ${VUETORRENT_VERSION}..."
           if [ "$VUETORRENT_VERSION" = "latest" ]; then
@@ -99,10 +81,6 @@ jobs:
           echo "Extracting VueTorrent..."
           unzip -q vuetorrent.zip
 
-          # Copy native WebUI to app/ui/www
-          mkdir -p app/ui/www
-          cp -r "qBittorrent-release-${QB_VERSION}/src/webui/www/"* app/ui/www/
-
           # Copy VueTorrent files to alternative WebUI directory
           echo "Setting up VueTorrent as alternative WebUI..."
           mkdir -p app/ui/vuetorrent/public
@@ -117,13 +95,11 @@ jobs:
             exit 1
           fi
 
-          echo "WebUI files:"
-          ls -la app/ui/www/ | head -5
           echo "VueTorrent files:"
           ls -la app/ui/vuetorrent/ | head -5
 
           # Cleanup
-          rm -rf qb-${QB_VERSION}.tar.gz "qBittorrent-release-${QB_VERSION}" vuetorrent vuetorrent.zip
+          rm -rf vuetorrent vuetorrent.zip
 
       - name: Inject update check into VueTorrent WebUI
         run: |
@@ -179,11 +155,7 @@ jobs:
           fi
           echo "Binary size: $(ls -lh qbittorrent-nox | awk '{print $5}')"
 
-          # Verify app/ui directories
-          if [ ! -d app/ui/www ] || [ -z "$(ls -A app/ui/www/ 2>/dev/null)" ]; then
-            echo "ERROR: app/ui/www directory is empty or not found!"
-            exit 1
-          fi
+          # Verify VueTorrent directory
           if [ ! -d app/ui/vuetorrent ] || [ -z "$(ls -A app/ui/vuetorrent 2>/dev/null)" ]; then
             echo "ERROR: app/ui/vuetorrent directory is empty or not found!"
             exit 1
@@ -204,7 +176,6 @@ jobs:
 
           echo "=== Verification ==="
           echo "Binary: $(ls -lh app/bin/qbittorrent-nox | awk '{print $5}')"
-          echo "Native WebUI files: $(ls -1 app/ui/www/ 2>/dev/null | wc -l)"
           echo "VueTorrent files: $(ls -1 app/ui/vuetorrent/ 2>/dev/null | wc -l)"
           ls -la app/bin/
           ls -laR app/ui/ | head -20

@@ -1,7 +1,7 @@
 appname = qbittorrent
-version = 5.1.4.1
+version = 5.1.4
 display_name = qBittorrent
-desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>✨ <b>默认启用VueTorrent</b>，现代美观，响应式设计。<br><br>📋 <b>端口修改：</b>安装或应用设置中可自定义端口，<b>请勿在WebUI中修改</b>。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🎨 <b>双UI选择：</b>安装或应用设置中可选VueTorrent(推荐)或qBittorrent原生界面<br><br>⚙️ <b>端口/UI修改：</b>请在<b>应用设置</b>中修改，<b>请勿在WebUI中修改</b>。<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
 # 系统要求
 platform = arm
@@ -26,4 +26,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.1.4.1 - 支持安装和设置中修改端口（请勿在WebUI中修改端口）<br>添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）<br>切换至以应用用户的身份运行
+changelog = v5.1.4 - 支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改请在应用设置中操作，请勿在WebUI中修改
