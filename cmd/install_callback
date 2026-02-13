@@ -31,7 +31,7 @@ mkdir -p "$CONFIG_DIR"
 # 根据UI类型创建配置
 case "$UI_TYPE" in
     vuetorrent)
-        # VueTorrent: 启用备用UI，iframe模式
+        # VueTorrent: 启用备用UI
         cat > "$CONFIG_FILE" << CFGEOF
 [Preferences]
 General\Locale=zh_CN
@@ -48,14 +48,10 @@ WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 CFGEOF
         
-        # 设置桌面入口为iframe
-        UI_CONFIG_TYPE="iframe"
-        # 导出变量供fnOS替换
-        export wizard_ui_mode="iframe"
         echo "VueTorrent configured (iframe mode)"
         ;;
     native)
-        # 原生UI: 禁用备用UI，url模式
+        # 原生UI: 禁用备用UI
         cat > "$CONFIG_FILE" << CFGEOF
 [Preferences]
 General\Locale=zh_CN
@@ -69,46 +65,20 @@ WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=false
+WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 CFGEOF
-        
-        # 设置桌面入口为url
-        UI_CONFIG_TYPE="url"
-        # 导出变量供fnOS替换
-        export wizard_ui_mode="url"
         echo "Native UI configured (url mode)"
         ;;
     *)
         echo "Unknown UI type: $UI_TYPE, using default"
-        UI_CONFIG_TYPE="iframe"
-        export wizard_ui_mode="iframe"
         ;;
 esac
-
-# 创建桌面入口配置
-UI_CONFIG_FILE="${TRIM_APPDEST}/ui/config"
-cat > "$UI_CONFIG_FILE" << UIEOF
-{
-    ".url": {
-        "qbittorrent.Application": {
-            "title": "qBittorrent",
-            "icon": "images/icon_{0}.png",
-            "type": "${UI_CONFIG_TYPE}",
-            "port": "${WEBUI_PORT}",
-            "url": "/",
-            "allUsers": true
-        }
-    }
-}
-UIEOF
-
-echo "Desktop entry created: ${UI_CONFIG_TYPE} mode"
 
 echo "=================================="
 echo "qBittorrent installation complete"
 echo "=================================="
 echo ""
 echo "UI Type: $UI_TYPE"
-echo "Desktop: ${UI_CONFIG_TYPE} mode"
 echo "Port: $WEBUI_PORT"
 echo ""
 echo "Start the application to use qBittorrent"

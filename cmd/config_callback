@@ -9,7 +9,6 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
-UI_CONFIG_FILE="${TRIM_APPDEST}/ui/config"
 
 echo "正在应用 qBittorrent 配置..."
 
@@ -24,16 +23,13 @@ echo "界面类型: $UI_TYPE"
 # 根据UI类型设置对应的mode
 case "$UI_TYPE" in
     vuetorrent)
-        UI_MODE="iframe"
         ALT_UI_ENABLED="true"
         ;;
     native)
-        UI_MODE="url"
         ALT_UI_ENABLED="false"
         ;;
     *)
-        echo "警告：未知的UI类型 $UI_TYPE，使用默认值 iframe"
-        UI_MODE="iframe"
+        echo "警告：未知的UI类型 $UI_TYPE，使用默认值 vuetorrent"
         ALT_UI_ENABLED="true"
         ;;
 esac
@@ -70,24 +66,6 @@ if [ -f "$CONFIG_FILE" ]; then
 else
     echo "警告：配置文件不存在，将在首次启动时创建"
 fi
-
-# 更新桌面入口配置
-echo "更新桌面入口配置..."
-cat > "$UI_CONFIG_FILE" << UIEOF
-{
-    ".url": {
-        "qbittorrent.Application": {
-            "title": "qBittorrent",
-            "icon": "images/icon_{0}.png",
-            "type": "${UI_MODE}",
-            "port": "${NEW_PORT}",
-            "url": "/",
-            "allUsers": true
-        }
-    }
-}
-UIEOF
-echo "桌面入口配置已更新: ${UI_MODE} 模式"
 
 # 重新启动应用
 echo "正在重启应用..."

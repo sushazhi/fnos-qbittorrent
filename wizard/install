@@ -45,11 +45,11 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行<br>✓ 适合大多数用户"
+        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行<br>✓ 可自动检测新版本"
       },
       {
         "type": "tips",
-        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需要在独立窗口中打开<br>✗ 不适合在 fnOS iframe 中运行"
+        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 更改设置需要在新标签页打开<br>✗ 无法检测新版本"
       },
       {
         "type": "radio",
@@ -58,11 +58,11 @@
         "initValue": "vuetorrent",
         "options": [
           {
-            "label": "VueTorrent - 现代界面（在 fnOS 中运行）",
+            "label": "VueTorrent - 现代界面",
             "value": "vuetorrent"
           },
           {
-            "label": "原生 WebUI - 经典界面（在新标签页打开）",
+            "label": "原生 WebUI - 经典界面",
             "value": "native"
           }
         ],

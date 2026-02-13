@@ -1,6 +1,7 @@
 #!/bin/bash
 # build.sh - qBittorrent for fnOS Local Build (Linux)
-# Usage: ./build.sh [--force] [--arch <arm64|amd64>]
+# Usage: ./build.sh [--force] [--arch <arm64|amd64>] [--version <version>]
+# Example: ./build.sh --version 5.1.4.2 --arch arm64
 
 set -e
 
@@ -14,6 +15,7 @@ NC='\033[0m' # No Color
 # Parse arguments
 FORCE_DOWNLOAD=false
 ARCH="arm64"
+VERSION=""
 for arg in "$@"; do
     case $arg in
         --force)
@@ -28,6 +30,14 @@ for arg in "$@"; do
             ARCH="${arg#*=}"
             shift
             ;;
+        --version)
+            VERSION="$2"
+            shift 2
+            ;;
+        --version=*)
+            VERSION="${arg#*=}"
+            shift
+            ;;
     esac
 done
 
@@ -36,16 +46,21 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${PROJECT_DIR}/.local-build"
 MANIFEST_FILE="${PROJECT_DIR}/manifest"
 
-# Read version from manifest
-if [ ! -f "$MANIFEST_FILE" ]; then
-    echo -e "${RED}ERROR: manifest file not found${NC}"
-    exit 1
-fi
-
-APP_VERSION=$(grep "^version\s*=" "$MANIFEST_FILE" | head -1 | sed 's/version\s*=\s*//' | tr -d ' ')
-if [ -z "$APP_VERSION" ]; then
-    echo -e "${RED}ERROR: Cannot read version from manifest${NC}"
-    exit 1
+# Read version from manifest or use command line parameter
+if [ -n "$VERSION" ]; then
+    APP_VERSION="$VERSION"
+    echo -e "${CYAN}Using version from parameter: ${APP_VERSION}${NC}"
+else
+    if [ ! -f "$MANIFEST_FILE" ]; then
+        echo -e "${RED}ERROR: manifest file not found${NC}"
+        exit 1
+    fi
+    APP_VERSION=$(grep "^version\s*=" "$MANIFEST_FILE" | head -1 | sed 's/version\s*=\s*//' | tr -d ' ')
+    if [ -z "$APP_VERSION" ]; then
+        echo -e "${RED}ERROR: Cannot read version from manifest${NC}"
+        exit 1
+    fi
+    echo -e "${CYAN}Using version from manifest: ${APP_VERSION}${NC}"
 fi
 
 # URLs
@@ -60,9 +75,43 @@ echo -e "${CYAN}  qBittorrent for fnOS - Local Build${NC}"
 echo -e "${CYAN}  Version: ${APP_VERSION}${NC}"
 echo -e "${CYAN}  Architecture: ${ARCH}${NC}"
 echo -e "${CYAN}========================================${NC}"
-echo -e "${CYAN}  qBittorrent for fnOS - Local Build${NC}"
-echo -e "${CYAN}  Version: ${APP_VERSION}${NC}"
-echo -e "${CYAN}========================================${NC}"
+
+# Download file with proxy fallback
+download_file() {
+    local url="$1"
+    local out_file="$2"
+    local description="$3"
+
+    # Check if file already exists
+    if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+        echo -e "${GREEN}  Using cached ${description}${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}  Downloading ${description}...${NC}"
+
+    # Try GitHub proxy first
+    if [[ "$url" == *"github.com"* ]]; then
+        proxy_url="https://hk.gh-proxy.org/${url#https://}"
+        if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "$proxy_url"; then
+            if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+                echo -e "${GREEN}  Downloaded ${description} (via proxy)${NC}"
+                return 0
+            fi
+        fi
+    fi
+
+    # Fallback to direct download
+    if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "$url"; then
+        if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+            echo -e "${GREEN}  Downloaded ${description}${NC}"
+            return 0
+        fi
+    fi
+
+    echo -e "${RED}  ERROR: Failed to download ${description}${NC}"
+    return 1
+}
 
 # [1/6] Setting up build directory
 echo -e "${YELLOW}[1/6] Setting up build directory...${NC}"
@@ -75,7 +124,8 @@ echo -e "${YELLOW}[2/6] Copying project files...${NC}"
 cp -r "${PROJECT_DIR}/cmd/"* "${BUILD_DIR}/cmd/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/config/"* "${BUILD_DIR}/config/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/wizard/"* "${BUILD_DIR}/wizard/" 2>/dev/null || true
-cp "${PROJECT_DIR}/manifest" "${BUILD_DIR}/" 2>/dev/null || true
+# Copy manifest (and update version if specified)
+sed "s/^version\s*=.*/version = ${APP_VERSION}/" "${PROJECT_DIR}/manifest" > "${BUILD_DIR}/manifest"
 cp "${PROJECT_DIR}/LICENSE" "${BUILD_DIR}/" 2>/dev/null || true
 cp "${PROJECT_DIR}/ICON.PNG" "${BUILD_DIR}/" 2>/dev/null || true
 cp "${PROJECT_DIR}/ICON_256.PNG" "${BUILD_DIR}/" 2>/dev/null || true
@@ -202,7 +252,9 @@ vue_index_html="${BUILD_DIR}/app/ui/vuetorrent/public/index.html"
 if [ -f "$vue_index_html" ]; then
     # Check if already injected
     if grep -q "QBITTORRENT_APP_VERSION" "$vue_index_html"; then
-        echo -e "${GRAY}  Update check already in VueTorrent (skipping)${NC}"
+        # Update version number
+        sed -i "s/window\.QBITTORRENT_APP_VERSION = '[^']*'/window.QBITTORRENT_APP_VERSION = '$APP_VERSION'/g" "$vue_index_html"
+        echo -e "${GREEN}  Update check version updated to ${APP_VERSION}${NC}"
     else
         # Use awk to insert before </body>
         awk -v ver="$APP_VERSION" '

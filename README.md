@@ -5,7 +5,7 @@
 
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.1-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.2-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
@@ -35,12 +35,33 @@
 
 | 界面 | 特点 |
 |------|------|
-| **VueTorrent** ✨ | 现代美观、响应式设计、Vue 3 + Vuetify 3、多语言支持 |
-| **qBittorrent原生** | 功能完整、轻量快速、一键切换 |
+| **VueTorrent** ✨ | 现代美观、响应式设计、Vue 3 + Vuetify 3、多语言支持（推荐） |
+| **qBittorrent原生** | 功能完整、轻量快速、经典界面 |
 
-> 💡 **切换方法**：进入 qBittorrent → 设置 → Web UI → 取消勾选"使用备用Web UI"
-> 
-> 📌 **注意**：使用原生UI时，必须**新标签页打开**进入设置页面才能切换。
+### UI切换方法
+
+本应用提供**三种方式**切换界面：
+
+#### 方式一：安装向导（推荐）
+
+在安装应用时，选择 **界面类型**：
+- VueTorrent（推荐）- 现代美观的Vue 3界面
+- qBittorrent原生 - 经典的原生界面
+
+#### 方式二：应用设置
+
+在飞牛NAS**应用设置**中修改：
+1. 进入应用中心
+2. 找到 qBittorrent
+3. 点击 **设置**
+4. 选择 **界面类型**：VueTorrent 或 原生界面
+5. 保存后重启应用生效
+
+#### 方式三：WebUI内切换
+
+进入 qBittorrent → 设置 → Web UI → 取消勾选"使用备用Web UI"
+
+> ⚠️ **注意**：使用原生UI时，必须**新标签页打开**进入设置页面，在飞牛的iframe窗口内无法访问设置。
 
 ---
 
@@ -52,12 +73,12 @@
 
 1. 打开 **应用中心**
 2. 左下角点击 **手动安装**
-3. 选择 `qbittorrent-vuetorrent-5.1.4.1-arm64.fpk` 文件
+3. 选择 `qbittorrent-vuetorrent-5.1.4.2-arm64.fpk` 文件
 
 或使用命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-vuetorrent-5.1.4.1-arm64.fpk
+appcenter-cli install-local qbittorrent-vuetorrent-5.1.4.2-arm64.fpk
 ```
 
 ---
@@ -145,7 +166,7 @@ chmod +x build.sh
 
 > ⚠️ **安全提示**：请首次登录后立即修改默认密码！
 > 
-> 📌 **端口修改**：安装或应用设置中可自定义端口，**请勿在WebUI中修改**，否则飞牛iframe窗口无法访问UI。
+> 📌 **端口修改**：安装或应用设置中可自定义端口，**请勿在WebUI中修改端口**，否则飞牛iframe窗口无法访问UI。
 
 ---
 
@@ -153,6 +174,7 @@ chmod +x build.sh
 
 | 版本 | 更新内容 |
 |------|----------|
+| v5.1.4.2 | 支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改可在应用设置中操作，请勿在WebUI中修改端口 |
 | v5.1.4.1 | 支持安装和应用设置中修改端口（请勿在WebUI中修改端口）<br>添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）<br>默认以应用用户的身份运行 |
 
 ---

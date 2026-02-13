@@ -2,7 +2,7 @@
  * qBittorrent Update Check - 注入到 WebUI 的更新检测脚本
  *
  * 功能：
- * 1. 检测 GitHub 最新版本
+ * 1. 实时检测 GitHub 最新版本（无缓存）
  * 2. 比较版本号判断是否有更新
  * 3. 显示更新通知
  * 4. 支持忽略更新
@@ -16,11 +16,9 @@
   const CONFIG = {
     currentVersion: window.QBITTORRENT_APP_VERSION || '5.1.4',
     repoOwner: 'sushazhi',
-    repoName: 'fnos-qbittorrent',
-    checkInterval: 24 * 60 * 60 * 1000
+    repoName: 'fnos-qbittorrent'
   };
 
-  const CACHE_KEY = 'qbittorrent_update_check';
   const IGNORE_KEY = 'qbittorrent_ignore_version';
   const CLOSE_TIME_KEY = 'qbittorrent_update_close_time';
   const CLOSE_DURATION = 24 * 60 * 60 * 1000;
@@ -29,28 +27,6 @@
   const isDebug = new URLSearchParams(window.location.search).get('debug') === '1';
   function log(msg) {
     if (isDebug) console.log('[Update]', msg);
-  }
-
-  function getCachedResult() {
-    try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const data = JSON.parse(cached);
-        if (Date.now() - data.timestamp < CONFIG.checkInterval) {
-          return data;
-        }
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  function cacheResult(data) {
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({
-        timestamp: Date.now(),
-        ...data
-      }));
-    } catch (e) {}
   }
 
   function getIgnoredVersion() {
@@ -350,23 +326,9 @@
   async function checkUpdate() {
     log('开始检查更新... 当前版本: ' + CONFIG.currentVersion);
 
-    // 先检查缓存
-    const cached = getCachedResult();
-    if (cached && cached.hasUpdate !== undefined) {
-      log('缓存结果: hasUpdate=' + cached.hasUpdate + ', latest=' + cached.latestVersion);
-      if (cached.hasUpdate) {
-        showUpdateNotification({
-          latestVersion: cached.latestVersion,
-          releaseUrl: cached.releaseUrl,
-          changelog: cached.changelog || ''
-        });
-      }
-      return;
-    }
-
-    // 检查 GitHub
+    // 直接检查 GitHub
     const apiUrl = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/releases/latest`;
-    
+
     try {
       const response = await fetch(apiUrl, {
         headers: { 'Accept': 'application/vnd.github.v3+json' },
@@ -382,18 +344,13 @@
 
       const hasUpdate = compareVersions(CONFIG.currentVersion, latestVersion) > 0;
 
-      const result = {
-        hasUpdate,
-        latestVersion,
-        releaseUrl: data.html_url || '',
-        changelog: data.body || ''
-      };
-
-      cacheResult(result);
-
       if (hasUpdate) {
         log('发现新版本，显示通知');
-        showUpdateNotification(result);
+        showUpdateNotification({
+          latestVersion,
+          releaseUrl: data.html_url || '',
+          changelog: data.body || ''
+        });
       } else {
         log('当前是最新版本');
       }

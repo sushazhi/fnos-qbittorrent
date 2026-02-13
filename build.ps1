@@ -1,5 +1,30 @@
-# build.ps1 - qBittorrent for fnOS Local Build
+<#
+.SYNOPSIS
+  qBittorrent for fnOS Local Build Script
+
+.DESCRIPTION
+  Build qBittorrent fnOS package with specified version or from manifest
+
+.PARAMETER Version
+  Override version number (e.g., "5.1.4.2")
+
+.PARAMETER ForceDownload
+  Force re-download all dependencies (fnpack, VueTorrent, qBittorrent-nox)
+
+.EXAMPLE
+  .\build.ps1
+  Build with version from manifest
+
+.EXAMPLE
+  .\build.ps1 -Version 5.1.4.2
+  Build with specific version
+
+.EXAMPLE
+  .\build.ps1 -Version 5.1.4.2 -ForceDownload
+  Build with specific version and force re-download all files
+#>
 param(
+    [string]$Version,
     [switch]$ForceDownload
 )
 
@@ -8,21 +33,26 @@ $ErrorActionPreference = "Stop"
 $PROJECT_DIR = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $MANIFEST_FILE = Join-Path $PROJECT_DIR "manifest"
 
-# Read version from manifest
-$Version = ""
-$lines = Get-Content $MANIFEST_FILE
-foreach ($line in $lines) {
-    if ($line -match "^version\s*=\s*(\S+)") {
-        $Version = $matches[1].Trim()
-        break
+# Read version from manifest or use command line parameter
+if ($Version) {
+    $APP_VERSION = $Version.Trim()
+    Write-Host "Using version from parameter: $APP_VERSION" -ForegroundColor Cyan
+} else {
+    $Version = ""
+    $lines = Get-Content $MANIFEST_FILE
+    foreach ($line in $lines) {
+        if ($line -match "^version\s*=\s*(\S+)") {
+            $Version = $matches[1].Trim()
+            break
+        }
     }
+    if (-not $Version) {
+        Write-Host "ERROR: Cannot read version from manifest" -ForegroundColor Red
+        exit 1
+    }
+    $APP_VERSION = $Version
+    Write-Host "Using version from manifest: $APP_VERSION" -ForegroundColor Cyan
 }
-if (-not $Version) {
-    Write-Host "ERROR: Cannot read version from manifest" -ForegroundColor Red
-    exit 1
-}
-
-$APP_VERSION = $Version
 $ARCH = "arm64"
 $BUILD_DIR = Join-Path $PROJECT_DIR ".local-build"
 $VERSION_FILE = Join-Path $BUILD_DIR "versions.json"
@@ -125,7 +155,11 @@ Write-Host "[2/5] Copying project files..." -ForegroundColor Yellow
 Copy-Item "$PROJECT_DIR\cmd\*" "$BUILD_DIR\cmd\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\config\*" "$BUILD_DIR\config\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\wizard\*" "$BUILD_DIR\wizard\" -Recurse -Force
-Copy-Item "$PROJECT_DIR\manifest" "$BUILD_DIR\" -Force
+
+# Copy manifest (and update version if specified)
+$manifestLines = Get-Content $MANIFEST_FILE -Raw -Encoding UTF8
+$manifestLines = $manifestLines -replace "(?m)^version\s*=.*", "version = $APP_VERSION"
+[System.IO.File]::WriteAllText("$BUILD_DIR\manifest", $manifestLines, [System.Text.Encoding]::UTF8)
 @("LICENSE", "ICON.PNG", "ICON_256.PNG") | ForEach-Object {
     if (Test-Path "$PROJECT_DIR\$_") { Copy-Item "$PROJECT_DIR\$_" "$BUILD_DIR\" -Force }
 }
@@ -199,12 +233,14 @@ $injectScript = @"
 $vueIndexHtml = "$BUILD_DIR\app\ui\vuetorrent\public\index.html"
 if (Test-Path $vueIndexHtml) {
     $vueContent = Get-Content $vueIndexHtml -Raw
-    # Check if already injected
-    if ($vueContent -match 'QBITTORRENT_APP_VERSION') {
-        Write-Host "  Update check already in VueTorrent (skipping)" -ForegroundColor Gray
+    # Update version if already exists, or inject new
+    if ($vueContent -match "window\.QBITTORRENT_APP_VERSION\s*=\s*'[^']*'") {
+        $vueContent = $vueContent -replace "window\.QBITTORRENT_APP_VERSION\s*=\s*'[^']*'", "window.QBITTORRENT_APP_VERSION = '$APP_VERSION'"
+        $vueContent | Set-Content $vueIndexHtml -NoNewline -Encoding UTF8
+        Write-Host "  Update check version updated to $APP_VERSION" -ForegroundColor Green
     } elseif ($vueContent -match '</body>') {
         $vueContent = $vueContent -replace '</body>', "$injectScript`n</body>"
-        $vueContent | Set-Content $vueIndexHtml -NoNewline
+        $vueContent | Set-Content $vueIndexHtml -NoNewline -Encoding UTF8
         Write-Host "  Update check injected into VueTorrent" -ForegroundColor Green
     } else {
         Write-Host "  Warning: Could not find </body> in VueTorrent index.html" -ForegroundColor Yellow
