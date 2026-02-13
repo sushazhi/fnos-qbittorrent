@@ -26,4 +26,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.1.4.2 - 支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改可在应用设置中操作，请勿在WebUI中修改端口
+changelog = v5.1.4.2<br>更新日志<br>支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改可在应用设置中操作，请勿在WebUI中修改端口
