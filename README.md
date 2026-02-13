@@ -193,22 +193,24 @@ chmod +x build.sh
 
 ```
 fnos-qbittorrent/
+├── .github/                # GitHub 配置
+│   └── workflows/          # CI/CD 工作流
 ├── app/                    # fnOS应用资源
 │   ├── bin/                # 构建产生的可执行文件
 │   │   └── qbittorrent-nox  # qBittorrent守护进程
 │   └── ui/                  # WebUI资源
 │       ├── vuetorrent/      # VueTorrent WebUI
-│       └── www/            # qBittorrent原生WebUI
+│       └── update-check.js  # VueTorrent 更新检测脚本
 ├── cmd/                    # fnOS 生命周期脚本
-│   ├── config_callback     # 配置后置
+│   ├── main               # 应用生命周期管理（启动/停止/重启/状态）
+│   ├── install_init        # 安装初始化
+│   ├── install_callback    # 安装后置配置
 │   ├── config_init         # 配置初始化
-│   ├── install_init        # 安装前初始化
-│   ├── install_callback    # 安装后回调
-│   ├── main               # 主服务控制脚本
-│   ├── uninstall_init      # 卸载前清理
-│   ├── uninstall_callback  # 卸载后清理
-│   ├── upgrade_init        # 升级前备份
-│   └── upgrade_callback    # 升级后恢复
+│   ├── config_callback     # 配置变更（端口/UI类型）并重启服务
+│   ├── upgrade_init        # 升级前停止服务并备份数据
+│   ├── upgrade_callback    # 升级后恢复数据、设置权限、启动服务
+│   ├── uninstall_init      # 卸载初始化
+│   └── uninstall_callback  # 卸载后清理
 ├── config/                 # 配置文件
 │   ├── privilege           # 权限配置（端口、挂载点）
 │   └── resource            # 资源映射配置
@@ -216,6 +218,8 @@ fnos-qbittorrent/
 │   ├── install             # 安装向导
 │   ├── uninstall           # 卸载向导
 │   └── upgrade             # 升级向导
+├── build.ps1               # Windows 构建脚本
+├── build.sh                # Linux 构建脚本
 ├── manifest                # 应用清单文件
 ├── ICON.PNG                # 应用图标（64x64）
 ├── ICON_256.PNG            # 应用图标（256x256）
