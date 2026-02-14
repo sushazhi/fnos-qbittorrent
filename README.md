@@ -31,7 +31,7 @@
 
 ## 🎨 双WebUI设计
 
-本应用包含**两套精美界面**，默认使用VueTorrent：
+本应用包含**两套精美界面**，可自由选择VueTorrent和原生界面：
 
 | 界面 | 特点 |
 |------|------|
@@ -61,7 +61,7 @@
 
 进入 qBittorrent → 设置 → Web UI → 取消勾选"使用备用Web UI"
 
-> ⚠️ **注意**：使用原生UI时，必须**新标签页打开**进入设置页面，在飞牛的iframe窗口内无法访问设置。
+> ⚠️ **注意**：使用原生UI时，必须**新标签页打开**进入设置页面，在飞牛的iframe窗口内访问设置修改无效。
 
 ---
 
@@ -118,7 +118,7 @@ chmod +x build.sh
 ### 构建说明
 
 - 构建脚本会自动从 manifest 读取版本号
-- 自动下载 VueTorrent WebUI 和 qBittorrent 源码
+- 自动下载 VueTorrent WebUI 和 qBittorrent 静态二进制
 - 自动注入更新检测脚本到 VueTorrent
 - 生成的 fpk 文件可直接安装
 
