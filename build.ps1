@@ -11,13 +11,20 @@
 .PARAMETER ForceDownload
   Force re-download all dependencies (fnpack, VueTorrent, qBittorrent-nox)
 
+.PARAMETER Arch
+  Target architecture: arm64 (default) or amd64 (fnOS platform x86 = amd64)
+
 .EXAMPLE
   .\build.ps1
-  Build with version from manifest
+  Build with version from manifest (default arm64)
 
 .EXAMPLE
   .\build.ps1 -Version 5.1.4.2
   Build with specific version
+
+.EXAMPLE
+  .\build.ps1 -Arch x86
+  Build for x86 architecture
 
 .EXAMPLE
   .\build.ps1 -Version 5.1.4.2 -ForceDownload
@@ -25,6 +32,7 @@
 #>
 param(
     [string]$Version,
+    [string]$Arch = "arm64",
     [switch]$ForceDownload
 )
 
@@ -53,15 +61,32 @@ if ($Version) {
     $APP_VERSION = $Version
     Write-Host "Using version from manifest: $APP_VERSION" -ForegroundColor Cyan
 }
-$ARCH = "arm64"
+
+# Validate architecture
+if ($Arch -notin @("arm64", "amd64")) {
+    Write-Host "ERROR: Invalid architecture '$Arch'. Must be 'arm64' or 'amd64'" -ForegroundColor Red
+    exit 1
+}
+$ARCH = $Arch
+Write-Host "Target architecture: $ARCH" -ForegroundColor Cyan
+
 $BUILD_DIR = Join-Path $PROJECT_DIR ".local-build"
 $VERSION_FILE = Join-Path $BUILD_DIR "versions.json"
 
 $FNPACK_URL = "https://static2.fnnas.com/fnpack/fnpack-1.2.1-windows-amd64"
-$VUE_TORRENT_BASE = "https://github.com/VueTorrent/VueTorrent/releases/download"
-$QBT_SOURCE_URL = "https://github.com/qbittorrent/qBittorrent/archive/refs/tags"
-$VUE_VER = "2.31.3"
+$VUE_TORRENT_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
 $QBT_VER = "5.1.4"
+
+# Get latest VueTorrent version
+Write-Host "Fetching latest VueTorrent version..." -ForegroundColor Cyan
+try {
+    $vueRelease = Invoke-RestMethod -Uri $VUE_TORRENT_API -UseBasicParsing
+    $VUE_VER = $vueRelease.tag_name -replace '^v', ''
+    Write-Host "VueTorrent version: $VUE_VER" -ForegroundColor Cyan
+} catch {
+    Write-Host "ERROR: Failed to fetch VueTorrent version" -ForegroundColor Red
+    exit 1
+}
 
 function Get-VersionInfo {
     if (Test-Path $VERSION_FILE) {
@@ -105,30 +130,25 @@ function Download-File {
             Write-Host "  Version mismatch for $Description (expected: $Version, cached: $((Get-VersionInfo).$Component)), re-downloading..." -ForegroundColor Yellow
         }
     }
-    
+
     Write-Host "  Downloading $Description..." -ForegroundColor Yellow
-    $proxyPattern = "https://hk.gh-proxy.org/{0}"
-    $downloadUrl = $Url
-    if ($Url -match "github\.com") {
-        $downloadUrl = $proxyPattern -f $Url.Replace("https://", "")
-    }
-    
+
     # Try curl first
     $curlPath = (Get-Command curl -ErrorAction SilentlyContinue).Path
     if ($curlPath) {
-        $p = Start-Process -FilePath $curlPath -ArgumentList "-L", "-o", $OutFile, $downloadUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
+        $p = Start-Process -FilePath $curlPath -ArgumentList "-L", "-o", $OutFile, $Url, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
         if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
-            Write-Host "  Downloaded $Description (via proxy)" -ForegroundColor Green
+            Write-Host "  Downloaded $Description" -ForegroundColor Green
             Save-VersionInfo -Component $Component -Version $Version
             return $true
         }
     }
-    
+
     # Fallback to Invoke-WebRequest
     try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $OutFile -UseBasicParsing -TimeoutSec 180
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing -TimeoutSec 180
         if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
-            Write-Host "  Downloaded $Description (via proxy)" -ForegroundColor Green
+            Write-Host "  Downloaded $Description" -ForegroundColor Green
             Save-VersionInfo -Component $Component -Version $Version
             return $true
         }
@@ -136,7 +156,7 @@ function Download-File {
         Write-Host "  ERROR: Failed to download $Description" -ForegroundColor Red
         return $false
     }
-    
+
     return $false
 }
 
@@ -156,7 +176,7 @@ Copy-Item "$PROJECT_DIR\cmd\*" "$BUILD_DIR\cmd\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\config\*" "$BUILD_DIR\config\" -Recurse -Force
 Copy-Item "$PROJECT_DIR\wizard\*" "$BUILD_DIR\wizard\" -Recurse -Force
 
-# Copy manifest (and update version if specified)
+# Copy manifest (and update version)
 $manifestLines = Get-Content $MANIFEST_FILE -Raw -Encoding UTF8
 $manifestLines = $manifestLines -replace "(?m)^version\s*=.*", "version = $APP_VERSION"
 [System.IO.File]::WriteAllText("$BUILD_DIR\manifest", $manifestLines, [System.Text.Encoding]::UTF8)
@@ -169,13 +189,24 @@ if (Test-Path "$PROJECT_DIR\app\ui\index.html") { Copy-Item "$PROJECT_DIR\app\ui
 Write-Host "  Project files copied" -ForegroundColor Green
 
 Write-Host "[3/5] Preparing qBittorrent-nox..." -ForegroundColor Yellow
-$daemonCache = Join-Path $BUILD_DIR "qbittorrent-nox"
+$daemonCache = Join-Path $BUILD_DIR "qbittorrent-nox-$ARCH"
 $daemonTarget = "$BUILD_DIR\app\bin\qbittorrent-nox"
-$url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/aarch64-qbittorrent-nox"
-$success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER" -Component "qbittorrent-nox" -Version $QBT_VER
+
+# Select qBittorrent-nox URL based on architecture
+if ($ARCH -eq "arm64") {
+    $targetArch = "aarch64"
+} elseif ($ARCH -eq "amd64") {
+    $targetArch = "x86_64"
+} else {
+    Write-Host "ERROR: Unsupported architecture $ARCH" -ForegroundColor Red
+    exit 1
+}
+
+$url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/${targetArch}-qbittorrent-nox"
+$success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER
 if (-not $success) {
-    $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v1.2.20/aarch64-qbittorrent-nox"
-    $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER" -Component "qbittorrent-nox" -Version $QBT_VER
+    $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v1.2.20/${targetArch}-qbittorrent-nox"
+    $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER
     if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
 }
 Copy-Item $daemonCache $daemonTarget -Force
@@ -191,7 +222,7 @@ if ((-not $ForceDownload) -and $vueReady) {
     Write-Host "  Using cached VueTorrent $VUE_VER" -ForegroundColor Green
 } else {
     # Download if needed
-    $url = "$VUE_TORRENT_BASE/v$VUE_VER/vuetorrent.zip"
+    $url = "https://github.com/VueTorrent/VueTorrent/releases/download/v$VUE_VER/vuetorrent.zip"
     if (-not (Download-File -Url $url -OutFile $vueCache -Description "VueTorrent $VUE_VER" -Component "vuetorrent" -Version $VUE_VER)) { exit 1 }
 
     Write-Host "  Extracting VueTorrent..." -ForegroundColor Gray

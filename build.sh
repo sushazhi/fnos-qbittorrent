@@ -65,10 +65,16 @@ fi
 
 # URLs
 FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-${ARCH}"
-VUE_TORRENT_BASE="https://github.com/VueTorrent/VueTorrent/releases/download"
-QBT_SOURCE_URL="https://github.com/qbittorrent/qBittorrent/archive/refs/tags"
-QBT_VERSION="5.1.4"
-VUE_VERSION="2.31.3"
+VUE_TORRENT_API="https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
+
+# Get latest VueTorrent version
+echo -e "${CYAN}Fetching latest VueTorrent version...${NC}"
+VUE_VERSION=$(curl -fsSL "$VUE_TORRENT_API" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+if [ -z "$VUE_VERSION" ]; then
+    echo -e "${RED}ERROR: Failed to fetch VueTorrent version${NC}"
+    exit 1
+fi
+echo -e "${CYAN}VueTorrent version: ${VUE_VERSION}${NC}"
 
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}  qBittorrent for fnOS - Local Build${NC}"
@@ -76,7 +82,7 @@ echo -e "${CYAN}  Version: ${APP_VERSION}${NC}"
 echo -e "${CYAN}  Architecture: ${ARCH}${NC}"
 echo -e "${CYAN}========================================${NC}"
 
-# Download file with proxy fallback
+# Download file
 download_file() {
     local url="$1"
     local out_file="$2"
@@ -90,18 +96,6 @@ download_file() {
 
     echo -e "${YELLOW}  Downloading ${description}...${NC}"
 
-    # Try GitHub proxy first
-    if [[ "$url" == *"github.com"* ]]; then
-        proxy_url="https://hk.gh-proxy.org/${url#https://}"
-        if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "$proxy_url"; then
-            if [ -f "$out_file" ] && [ -s "$out_file" ]; then
-                echo -e "${GREEN}  Downloaded ${description} (via proxy)${NC}"
-                return 0
-            fi
-        fi
-    fi
-
-    # Fallback to direct download
     if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "$url"; then
         if [ -f "$out_file" ] && [ -s "$out_file" ]; then
             echo -e "${GREEN}  Downloaded ${description}${NC}"
@@ -113,14 +107,14 @@ download_file() {
     return 1
 }
 
-# [1/6] Setting up build directory
-echo -e "${YELLOW}[1/6] Setting up build directory...${NC}"
-mkdir -p "${BUILD_DIR}/app/bin" "${BUILD_DIR}/app/ui/vuetorrent" "${BUILD_DIR}/app/ui/www"
+# [1/5] Setting up build directory
+echo -e "${YELLOW}[1/5] Setting up build directory...${NC}"
+mkdir -p "${BUILD_DIR}/app/bin" "${BUILD_DIR}/app/ui/vuetorrent"
 mkdir -p "${BUILD_DIR}/cmd" "${BUILD_DIR}/config" "${BUILD_DIR}/wizard"
 echo -e "${GREEN}  Build directory ready${NC}"
 
-# [2/6] Copying project files
-echo -e "${YELLOW}[2/6] Copying project files...${NC}"
+# [2/5] Copying project files
+echo -e "${YELLOW}[2/5] Copying project files...${NC}"
 cp -r "${PROJECT_DIR}/cmd/"* "${BUILD_DIR}/cmd/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/config/"* "${BUILD_DIR}/config/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/wizard/"* "${BUILD_DIR}/wizard/" 2>/dev/null || true
@@ -133,9 +127,9 @@ if [ -d "${PROJECT_DIR}/app/ui/config" ]; then cp -r "${PROJECT_DIR}/app/ui/conf
 if [ -d "${PROJECT_DIR}/app/ui/images" ]; then cp -r "${PROJECT_DIR}/app/ui/images" "${BUILD_DIR}/app/ui/"; fi
 echo -e "${GREEN}  Project files copied${NC}"
 
-# [3/6] Preparing qBittorrent-nox
-echo -e "${YELLOW}[3/6] Preparing qBittorrent-nox...${NC}"
-daemon_cache="${BUILD_DIR}/qbittorrent-nox"
+# [3/5] Preparing qBittorrent-nox
+echo -e "${YELLOW}[3/5] Preparing qBittorrent-nox...${NC}"
+daemon_cache="${BUILD_DIR}/qbittorrent-nox-${ARCH}"
 daemon_target="${BUILD_DIR}/app/bin/qbittorrent-nox"
 
 # Map ARCH to binary suffix
@@ -163,8 +157,8 @@ else
     cp "$daemon_cache" "$daemon_target"
 fi
 
-# [4/6] Preparing VueTorrent WebUI
-echo -e "${YELLOW}[4/6] Preparing VueTorrent WebUI...${NC}"
+# [4/5] Preparing VueTorrent WebUI
+echo -e "${YELLOW}[4/5] Preparing VueTorrent WebUI...${NC}"
 vue_cache="${BUILD_DIR}/vuetorrent.zip"
 vue_target_dir="${BUILD_DIR}/app/ui/vuetorrent"
 
@@ -177,7 +171,7 @@ if [ "$FORCE_DOWNLOAD" = false ] && [ "$vue_ready" = true ]; then
     echo -e "${GREEN}  Using cached VueTorrent${NC}"
 else
     if [ ! -f "$vue_cache" ] || [ ! -s "$vue_cache" ]; then
-        url="${VUE_TORRENT_BASE}/v${VUE_VERSION}/vuetorrent.zip"
+        url="https://github.com/VueTorrent/VueTorrent/releases/download/v${VUE_VERSION}/vuetorrent.zip"
         download_file "$url" "$vue_cache" "VueTorrent ${VUE_VERSION}" || exit 1
     fi
 
@@ -202,43 +196,8 @@ else
     echo -e "${GREEN}  VueTorrent ready${NC}"
 fi
 
-# [5/6] Preparing qBittorrent Native WebUI
-echo -e "${YELLOW}[5/6] Preparing qBittorrent Native WebUI...${NC}"
-native_cache="${BUILD_DIR}/qb-${QBT_VERSION}.zip"
-native_target_dir="${BUILD_DIR}/app/ui/www"
-
-native_ready=false
-if [ -f "${native_target_dir}/public/index.html" ] || [ -f "${native_target_dir}/.gitignore" ]; then
-    native_ready=true
-fi
-
-if [ "$FORCE_DOWNLOAD" = false ] && [ "$native_ready" = true ]; then
-    echo -e "${GREEN}  Using cached native WebUI${NC}"
-else
-    if [ ! -f "$native_cache" ] || [ ! -s "$native_cache" ]; then
-        url="${QBT_SOURCE_URL}/release-${QBT_VERSION}.zip"
-        download_file "$url" "$native_cache" "qBittorrent ${QBT_VERSION} source" || exit 1
-    fi
-
-    echo -e "${GRAY}  Extracting native WebUI...${NC}"
-    temp_dir="${BUILD_DIR}/temp-qbt"
-    rm -rf "$temp_dir"
-    mkdir -p "$temp_dir"
-    unzip -q "$native_cache" -d "$temp_dir"
-
-    rm -rf "$native_target_dir"
-    mkdir -p "$native_target_dir"
-
-    # Extract: qBittorrent-release-VERSION/src/webui/www/* -> app/ui/www/
-    if [ -d "${temp_dir}/qBittorrent-release-${QBT_VERSION}/src/webui/www" ]; then
-        cp -r "${temp_dir}/qBittorrent-release-${QBT_VERSION}/src/webui/www/"* "$native_target_dir/"
-    fi
-    rm -rf "$temp_dir"
-    echo -e "${GREEN}  Native WebUI ready${NC}"
-fi
-
-# [5.5/6] Inject update check into VueTorrent
-echo -e "${YELLOW}[5.5/6] Injecting update check into WebUIs...${NC}"
+# [4.5/5] Inject update check into VueTorrent
+echo -e "${YELLOW}[4.5/5] Injecting update check into WebUIs...${NC}"
 
 # Copy update-check.js to VueTorrent public directory
 vue_public_dir="${BUILD_DIR}/app/ui/vuetorrent/public"
@@ -273,8 +232,8 @@ else
     echo -e "${YELLOW}  Warning: VueTorrent index.html not found${NC}"
 fi
 
-# [6/6] Building package
-echo -e "${YELLOW}[6/6] Building package...${NC}"
+# [5/5] Building package
+echo -e "${YELLOW}[5/5] Building package...${NC}"
 fnpack_file="${FNPACK_URL##*/}"
 fnpack_path="${BUILD_DIR}/${fnpack_file}"
 

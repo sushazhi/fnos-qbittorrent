@@ -28,11 +28,59 @@ echo "Port: $WEBUI_PORT"
 # 创建配置目录
 mkdir -p "$CONFIG_DIR"
 
-# 根据UI类型创建配置
+# 根据UI类型设置配置
 case "$UI_TYPE" in
     vuetorrent)
-        # VueTorrent: 启用备用UI
-        cat > "$CONFIG_FILE" << CFGEOF
+        ALT_UI_ENABLED="true"
+        ;;
+    native)
+        ALT_UI_ENABLED="false"
+        ;;
+    *)
+        echo "Unknown UI type: $UI_TYPE, using default vuetorrent"
+        ALT_UI_ENABLED="true"
+        ;;
+esac
+
+# 检查配置文件是否已存在
+if [ -f "$CONFIG_FILE" ]; then
+    echo "Configuration file exists, updating UI and Port settings..."
+
+    # 使用 awk 更新配置，保留用户其他设置
+    TMP_CONFIG=$(mktemp)
+    awk -v port="${WEBUI_PORT}" -v alt_ui="${ALT_UI_ENABLED}" '
+        BEGIN { port_updated = 0; alt_ui_updated = 0; }
+        {
+            if ($0 == "[Preferences]") {
+                print $0
+                print "WebUI\\Port=" port
+                print "WebUI\\AlternativeUIEnabled=" alt_ui
+                port_updated = 1
+                alt_ui_updated = 1
+            }
+            else if (!/^WebUI\\Port=/ && !/^WebUI\\AlternativeUIEnabled=/) {
+                print $0
+            }
+        }
+        END {
+            if (!port_updated && !alt_ui_updated) {
+                print "[Preferences]"
+                print "WebUI\\Port=" port
+                print "WebUI\\AlternativeUIEnabled=" alt_ui
+            }
+        }
+    ' "$CONFIG_FILE" > "$TMP_CONFIG"
+
+    mv "$TMP_CONFIG" "$CONFIG_FILE"
+    echo "Configuration updated"
+else
+    echo "Creating new configuration file..."
+
+    # 根据UI类型创建完整默认配置
+    case "$UI_TYPE" in
+        vuetorrent)
+            # VueTorrent: 启用备用UI
+            cat > "$CONFIG_FILE" << CFGEOF
 [Preferences]
 General\Locale=zh_CN
 Downloads\SavePath=/vol1/1000/downloads/
@@ -47,12 +95,12 @@ WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 CFGEOF
-        
-        echo "VueTorrent configured (iframe mode)"
-        ;;
-    native)
-        # 原生UI: 禁用备用UI
-        cat > "$CONFIG_FILE" << CFGEOF
+
+            echo "VueTorrent configured (iframe mode)"
+            ;;
+        native)
+            # 原生UI: 禁用备用UI
+            cat > "$CONFIG_FILE" << CFGEOF
 [Preferences]
 General\Locale=zh_CN
 Downloads\SavePath=/vol1/1000/downloads/
@@ -67,12 +115,13 @@ WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=false
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 CFGEOF
-        echo "Native UI configured (url mode)"
-        ;;
-    *)
-        echo "Unknown UI type: $UI_TYPE, using default"
-        ;;
-esac
+            echo "Native UI configured (url mode)"
+            ;;
+        *)
+            echo "Unknown UI type: $UI_TYPE"
+            ;;
+    esac
+fi
 
 echo "=================================="
 echo "qBittorrent installation complete"

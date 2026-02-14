@@ -34,42 +34,64 @@ case "$UI_TYPE" in
         ;;
 esac
 
-# 如果应用正在运行，先停止
+# 检查应用是否正在运行
+WAS_RUNNING=false
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE" 2>/dev/null)
     if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
-        echo "停止当前运行的服务..."
+        WAS_RUNNING=true
+        echo "应用正在运行，需要先停止..."
         "$MAIN_SCRIPT" stop
         sleep 2
+    else
+        echo "应用当前处于停止状态"
     fi
+else
+    echo "应用当前处于停止状态"
 fi
 
 # 更新qBittorrent配置文件
 if [ -f "$CONFIG_FILE" ]; then
     echo "更新qBittorrent配置文件..."
-    
-    # 更新端口
-    if grep -q "^WebUI\\Port=" "$CONFIG_FILE"; then
-        sed -i "s/^WebUI\\Port=.*/WebUI\\Port=${NEW_PORT}/" "$CONFIG_FILE"
-    else
-        echo "WebUI\Port=${NEW_PORT}" >> "$CONFIG_FILE"
-    fi
-    
-    # 更新备用UI设置
-    if grep -q "^WebUI\\AlternativeUIEnabled=" "$CONFIG_FILE"; then
-        sed -i "s/^WebUI\\AlternativeUIEnabled=.*/WebUI\\AlternativeUIEnabled=${ALT_UI_ENABLED}/" "$CONFIG_FILE"
-    else
-        echo "WebUI\AlternativeUIEnabled=${ALT_UI_ENABLED}" >> "$CONFIG_FILE"
-    fi
-    
+
+    # 使用临时文件避免重复
+    TMP_CONFIG=$(mktemp)
+    awk -v port="${NEW_PORT}" -v alt_ui="${ALT_UI_ENABLED}" '
+        BEGIN { port_updated = 0; alt_ui_updated = 0; }
+        {
+            if ($0 == "[Preferences]") {
+                print $0
+                print "WebUI\\Port=" port
+                print "WebUI\\AlternativeUIEnabled=" alt_ui
+                port_updated = 1
+                alt_ui_updated = 1
+            }
+            else if (!/^WebUI\\Port=/ && !/^WebUI\\AlternativeUIEnabled=/) {
+                print $0
+            }
+        }
+        END {
+            if (!port_updated && !alt_ui_updated) {
+                print "[Preferences]"
+                print "WebUI\\Port=" port
+                print "WebUI\\AlternativeUIEnabled=" alt_ui
+            }
+        }
+    ' "$CONFIG_FILE" > "$TMP_CONFIG"
+
+    mv "$TMP_CONFIG" "$CONFIG_FILE"
     echo "qBittorrent配置文件已更新"
 else
     echo "警告：配置文件不存在，将在首次启动时创建"
 fi
 
-# 重新启动应用
-echo "正在重启应用..."
-"$MAIN_SCRIPT" start
+# 根据之前的状态决定是否重启
+if [ "$WAS_RUNNING" = true ]; then
+    echo "应用之前在运行，正在重启..."
+    "$MAIN_SCRIPT" start
+    echo "qBittorrent 配置已应用，服务已重启"
+else
+    echo "应用之前处于停止状态，配置已应用，不会自动启动"
+fi
 
-echo "qBittorrent 配置已应用，服务已重启"
 exit 0
