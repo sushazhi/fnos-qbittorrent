@@ -67,6 +67,48 @@ fi
 FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-${ARCH}"
 VUE_TORRENT_API="https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
 
+# Proxy configuration
+MAIN_PROXY="https://hk.gh-proxy.org"
+BINARY_PROXY="https://ghfast.top"
+
+# Download file with proxy fallback
+download_file_with_proxy() {
+    local url="$1"
+    local out_file="$2"
+    local description="$3"
+    local use_binary_proxy="${4:-false}"
+
+    # Check if file already exists
+    if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+        echo -e "${GREEN}  Using cached ${description}${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}  Downloading ${description}...${NC}"
+
+    # Try main proxy first
+    if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "${MAIN_PROXY}${url}"; then
+        if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+            echo -e "${GREEN}  Downloaded ${description} (via ${MAIN_PROXY})${NC}"
+            return 0
+        fi
+    fi
+
+    # Try binary proxy for binary files
+    if [ "$use_binary_proxy" = true ]; then
+        echo -e "${YELLOW}  Trying backup proxy...${NC}"
+        if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "${BINARY_PROXY}${url}"; then
+            if [ -f "$out_file" ] && [ -s "$out_file" ]; then
+                echo -e "${GREEN}  Downloaded ${description} (via ${BINARY_PROXY})${NC}"
+                return 0
+            fi
+        fi
+    fi
+
+    echo -e "${RED}  ERROR: Failed to download ${description}${NC}"
+    return 1
+}
+
 # Get latest VueTorrent version
 echo -e "${CYAN}Fetching latest VueTorrent version...${NC}"
 VUE_VERSION=$(curl -fsSL "$VUE_TORRENT_API" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
@@ -81,31 +123,6 @@ echo -e "${CYAN}  qBittorrent for fnOS - Local Build${NC}"
 echo -e "${CYAN}  Version: ${APP_VERSION}${NC}"
 echo -e "${CYAN}  Architecture: ${ARCH}${NC}"
 echo -e "${CYAN}========================================${NC}"
-
-# Download file
-download_file() {
-    local url="$1"
-    local out_file="$2"
-    local description="$3"
-
-    # Check if file already exists
-    if [ -f "$out_file" ] && [ -s "$out_file" ]; then
-        echo -e "${GREEN}  Using cached ${description}${NC}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}  Downloading ${description}...${NC}"
-
-    if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$out_file" "$url"; then
-        if [ -f "$out_file" ] && [ -s "$out_file" ]; then
-            echo -e "${GREEN}  Downloaded ${description}${NC}"
-            return 0
-        fi
-    fi
-
-    echo -e "${RED}  ERROR: Failed to download ${description}${NC}"
-    return 1
-}
 
 # [1/5] Setting up build directory
 echo -e "${YELLOW}[1/5] Setting up build directory...${NC}"
@@ -150,9 +167,9 @@ if [ "$FORCE_DOWNLOAD" = false ] && [ -f "$daemon_cache" ] && [ -s "$daemon_cach
     cp "$daemon_cache" "$daemon_target"
 else
     url="https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${APP_VERSION}_v2.0.11/${binary_arch}-qbittorrent-nox"
-    if ! download_file "$url" "$daemon_cache" "qBittorrent-nox ${APP_VERSION} (${ARCH})"; then
+    if ! download_file_with_proxy "$url" "$daemon_cache" "qBittorrent-nox ${APP_VERSION} (${ARCH})" true; then
         url="https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${APP_VERSION}_v1.2.20/${binary_arch}-qbittorrent-nox"
-        download_file "$url" "$daemon_cache" "qBittorrent-nox ${APP_VERSION} (${ARCH})" || exit 1
+        download_file_with_proxy "$url" "$daemon_cache" "qBittorrent-nox ${APP_VERSION} (${ARCH})" true || exit 1
     fi
     cp "$daemon_cache" "$daemon_target"
 fi
@@ -172,7 +189,7 @@ if [ "$FORCE_DOWNLOAD" = false ] && [ "$vue_ready" = true ]; then
 else
     if [ ! -f "$vue_cache" ] || [ ! -s "$vue_cache" ]; then
         url="https://github.com/VueTorrent/VueTorrent/releases/download/v${VUE_VERSION}/vuetorrent.zip"
-        download_file "$url" "$vue_cache" "VueTorrent ${VUE_VERSION}" || exit 1
+        download_file_with_proxy "$url" "$vue_cache" "VueTorrent ${VUE_VERSION}" true || exit 1
     fi
 
     echo -e "${GRAY}  Extracting VueTorrent...${NC}"
@@ -240,7 +257,19 @@ fnpack_path="${BUILD_DIR}/${fnpack_file}"
 if [ "$FORCE_DOWNLOAD" = false ] && [ -f "$fnpack_path" ]; then
     echo -e "${GREEN}  Using cached fnpack${NC}"
 else
-    download_file "$FNPACK_URL" "$fnpack_path" "fnpack" || exit 1
+    echo -e "${YELLOW}  Downloading fnpack...${NC}"
+    # fnpack直接访问，不使用代理
+    if curl -fsSL --connect-timeout 30 --max-time 300 --retry 3 -o "$fnpack_path" "$FNPACK_URL"; then
+        if [ -f "$fnpack_path" ] && [ -s "$fnpack_path" ]; then
+            echo -e "${GREEN}  Downloaded fnpack${NC}"
+        else
+            echo -e "${RED}  ERROR: Failed to download fnpack${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}  ERROR: Failed to download fnpack${NC}"
+        exit 1
+    fi
 fi
 
 chmod +x "$fnpack_path"
