@@ -78,8 +78,8 @@ $VUE_TORRENT_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/
 $QBT_VER = "5.1.4"
 
 # Proxy configuration
-$MAIN_PROXY = "https://hk.gh-proxy.org"
-$BINARY_PROXY = "https://ghfast.top"
+$MAIN_PROXY = "https://hk.gh-proxy.org/"
+$BINARY_PROXY = "https://ghfast.top/"
 
 # Get latest VueTorrent version
 Write-Host "Fetching latest VueTorrent version..." -ForegroundColor Cyan

@@ -68,8 +68,8 @@ FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-${ARCH}"
 VUE_TORRENT_API="https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
 
 # Proxy configuration
-MAIN_PROXY="https://hk.gh-proxy.org"
-BINARY_PROXY="https://ghfast.top"
+MAIN_PROXY="https://hk.gh-proxy.org/"
+BINARY_PROXY="https://ghfast.top/"
 
 # Download file with proxy fallback
 download_file_with_proxy() {
