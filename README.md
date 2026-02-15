@@ -94,9 +94,21 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.1.4.2-arm64.fpk
 # 2. 进入项目目录
 cd C:\Path\To\fnos-qbittorrent
 
-# 3. 执行构建
+# 3. 执行构建（默认 arm64）
 .\build.ps1
+
+# 4. 或指定参数
+.\build.ps1 -Version 5.1.4.2    # 指定版本号
+.\build.ps1 -Arch amd64         # 指定架构（arm64 或 amd64）
+.\build.ps1 -ForceDownload      # 强制重新下载所有文件
 ```
+
+**构建特性：**
+- 自动使用 GitHub 加速代理（hk.gh-proxy.org → ghfast.top）
+- qBittorrent 二进制和 VueTorrent UI 通过代理下载
+- fnpack 工具直接访问（国内服务器更快）
+- GitHub API 直接访问（代理无法正确代理 API）
+- 支持版本缓存，避免重复下载
 
 ### Linux 本地构建
 
@@ -109,11 +121,18 @@ chmod +x build.sh
 # 2. 执行构建（默认 arm64）
 ./build.sh
 
-# 3. 或指定架构
-./build.sh --arch arm64   # ARM64
-./build.sh --arch amd64   # AMD64
-./build.sh --force        # 强制重新下载所有文件
+# 3. 或指定参数
+./build.sh --version 5.1.4.2  # 指定版本号
+./build.sh --arch arm64       # 指定架构（arm64 或 amd64）
+./build.sh --force            # 强制重新下载所有文件
 ```
+
+**构建特性：**
+- 自动使用 GitHub 加速代理（hk.gh-proxy.org → ghfast.top）
+- qBittorrent 二进制和 VueTorrent UI 通过代理下载
+- fnpack 工具直接访问（国内服务器更快）
+- GitHub API 直接访问（代理无法正确代理 API）
+- 支持版本缓存，避免重复下载
 
 ### 构建说明
 
@@ -121,6 +140,7 @@ chmod +x build.sh
 - 自动下载 VueTorrent WebUI 和 qBittorrent 静态二进制
 - 自动注入更新检测脚本到 VueTorrent
 - 生成的 fpk 文件可直接安装
+- 使用智能代理策略，大幅提升下载速度和成功率
 
 ### 输出文件
 
