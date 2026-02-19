@@ -10,6 +10,7 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
 CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.upgrade.lock"
 MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
 
 # 备份在shares目录
@@ -20,6 +21,12 @@ echo "=================================="
 echo "qBittorrent 升级完成"
 echo "=================================="
 echo ""
+
+# 等待升级锁释放（upgrade_init 会释放）
+exec 200>"$LOCK_FILE"
+flock -w 30 200 || {
+    echo "警告：等待升级锁超时，继续执行..."
+}
 
 # 设置可执行权限
 echo "[1/3] 设置可执行权限..."
@@ -127,6 +134,7 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo ""
     echo "重要提示：如果您更改了 qBittorrent 版本，"
     echo "          某些设置可能需要重新配置。"
+    flock -u 200
     exit 0
 else
     echo ""
@@ -134,5 +142,6 @@ else
     echo "警告：升级完成但服务启动失败"
     echo "=================================="
     echo "请查看日志: ${TRIM_PKGVAR}/${APP_NAME}.log"
+    flock -u 200
     exit 1
 fi

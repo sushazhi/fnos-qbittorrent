@@ -8,6 +8,7 @@ APP_NAME="qbittorrent"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.lock"
 MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
 
 echo "正在应用 qBittorrent 配置..."
@@ -54,6 +55,13 @@ fi
 if [ -f "$CONFIG_FILE" ]; then
     echo "更新qBittorrent配置文件..."
 
+    # 获取文件锁，防止并发写入
+    exec 200>"$LOCK_FILE"
+    flock -w 10 200 || {
+        echo "错误：无法获取配置文件锁，可能有其他进程正在操作" >&2
+        exit 1
+    }
+
     # 使用临时文件避免重复
     TMP_CONFIG=$(mktemp)
     awk -v port="${NEW_PORT}" -v alt_ui="${ALT_UI_ENABLED}" '
@@ -80,6 +88,9 @@ if [ -f "$CONFIG_FILE" ]; then
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
 
     mv "$TMP_CONFIG" "$CONFIG_FILE"
+
+    # 释放锁
+    flock -u 200
     echo "qBittorrent配置文件已更新"
 else
     echo "警告：配置文件不存在，将在首次启动时创建"

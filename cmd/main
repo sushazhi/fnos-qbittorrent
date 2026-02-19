@@ -13,7 +13,7 @@ WEBUI_PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
 
 case "$1" in
 start)
-    # 检查是否已运行
+    # 检查是否已运行（通过PID文件）
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
@@ -23,8 +23,37 @@ start)
         rm -f "$PID_FILE"
     fi
 
+    # 检查系统中是否存在其他 qbittorrent-nox 进程（可能是飞牛下载等）
+    EXISTING_PID=$(pgrep -f "qbittorrent-nox" 2>/dev/null | head -1)
+    if [ -n "$EXISTING_PID" ]; then
+        # 检查是否是本应用的进程
+        EXISTING_CMD=$(ps -p "$EXISTING_PID" -o args= 2>/dev/null)
+        if echo "$EXISTING_CMD" | grep -q "profile.*${DATA_DIR}"; then
+            # 是本应用的进程，但PID文件丢失，尝试恢复
+            echo $EXISTING_PID > "$PID_FILE"
+            echo "${APP_NAME} is already running (PID: $EXISTING_PID, recovered)"
+            exit 0
+        fi
+        # 其他应用的进程（如飞牛下载 trim-qbittorrent），仅记录日志，不阻止启动
+        echo "提示：检测到其他 qBittorrent 进程正在运行 (PID: $EXISTING_PID)，继续启动本应用"
+    fi
+
     # 创建必要的目录
     mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config"
+
+    # 启动前端口预检测
+    if command -v ss >/dev/null 2>&1; then
+        PORT_CHECK=$(ss -tln 2>/dev/null | grep -c ":${WEBUI_PORT} " || true)
+    elif command -v netstat >/dev/null 2>&1; then
+        PORT_CHECK=$(netstat -tln 2>/dev/null | grep -c ":${WEBUI_PORT} " || true)
+    else
+        PORT_CHECK=0
+    fi
+    if [ "$PORT_CHECK" -gt 0 ]; then
+        echo "错误：端口 ${WEBUI_PORT} 已被占用，请更换端口后重试" > "$TRIM_TEMP_LOGFILE"
+        echo "可在应用设置中修改端口号" >> "$TRIM_TEMP_LOGFILE"
+        exit 1
+    fi
 
     # 设置环境变量
     export QT_QPA_PLATFORM=offscreen
@@ -90,13 +119,14 @@ EOF
     ;;
 
 stop)
-    # 查找进程
+    # 查找本应用的进程
     PID=""
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE" 2>/dev/null)
     fi
     if [ -z "$PID" ] || ! ps -p "$PID" > /dev/null 2>&1; then
-        PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
+        # 通过 profile 路径精确匹配本应用的进程
+        PID=$(pgrep -f "qbittorrent-nox.*--profile.*${DATA_DIR}" 2>/dev/null | head -1)
     fi
 
     if [ -z "$PID" ]; then
@@ -137,7 +167,8 @@ status)
         fi
     fi
     if [ "$RUNNING" = false ]; then
-        PID=$(pgrep -f "qbittorrent-nox.*--profile" 2>/dev/null | head -1)
+        # 通过 profile 路径精确匹配本应用的进程
+        PID=$(pgrep -f "qbittorrent-nox.*--profile.*${DATA_DIR}" 2>/dev/null | head -1)
         if [ -n "$PID" ]; then
             RUNNING=true
         fi
