@@ -2,8 +2,6 @@
 # cmd/upgrade_callback - qBittorrent升级回调脚本
 # 功能：升级后恢复数据、设置权限、验证配置、启动服务
 
-set -e
-
 APP_NAME="qbittorrent"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
@@ -98,7 +96,7 @@ WebUI\Address=*
 WebUI\Port=${wizard_app_port:-8080}
 WebUI\LocalHostAuth=true
 WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true

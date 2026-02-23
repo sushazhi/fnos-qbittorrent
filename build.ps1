@@ -122,7 +122,7 @@ function Test-VersionMatch {
     return ($versions.$Component -eq $ExpectedVersion)
 }
 
-function Download-File {
+function Get-File {
     param($Url, $OutFile, $Description, $Component, $Version, $UseBinaryProxy = $false)
 
     # Check version match
@@ -162,7 +162,7 @@ function Download-File {
     return $false
 }
 
-function Download-File-Direct {
+function Get-FileDirect {
     param($Url, $OutFile, $Description, $Component, $Version)
 
     # Check version match
@@ -247,10 +247,10 @@ if ($ARCH -eq "arm64") {
 }
 
 $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/${targetArch}-qbittorrent-nox"
-$success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
+$success = Get-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
 if (-not $success) {
     $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v1.2.20/${targetArch}-qbittorrent-nox"
-    $success = Download-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
+    $success = Get-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
     if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
 }
 Copy-Item $daemonCache $daemonTarget -Force
@@ -267,7 +267,7 @@ if ((-not $ForceDownload) -and $vueReady) {
 } else {
     # Download if needed
     $url = "https://github.com/VueTorrent/VueTorrent/releases/download/v$VUE_VER/vuetorrent.zip"
-    if (-not (Download-File -Url $url -OutFile $vueCache -Description "VueTorrent $VUE_VER" -Component "vuetorrent" -Version $VUE_VER -UseBinaryProxy $true)) { exit 1 }
+    if (-not (Get-File -Url $url -OutFile $vueCache -Description "VueTorrent $VUE_VER" -Component "vuetorrent" -Version $VUE_VER -UseBinaryProxy $true)) { exit 1 }
 
     Write-Host "  Extracting VueTorrent..." -ForegroundColor Gray
     $tempDir = Join-Path $BUILD_DIR "temp-vuetorrent"
@@ -331,7 +331,7 @@ $fnpackPath = Join-Path $BUILD_DIR $FNPACK_FILE
 if ((-not $ForceDownload) -and (Test-Path $fnpackPath) -and (Test-VersionMatch -Component "fnpack" -ExpectedVersion $FNPACK_VER)) {
     Write-Host "  Using cached fnpack $FNPACK_VER" -ForegroundColor Green
 } else {
-    if (-not (Download-File-Direct -Url $FNPACK_URL -OutFile $fnpackPath -Description "fnpack" -Component "fnpack" -Version $FNPACK_VER)) { exit 1 }
+    if (-not (Get-FileDirect -Url $FNPACK_URL -OutFile $fnpackPath -Description "fnpack" -Component "fnpack" -Version $FNPACK_VER)) { exit 1 }
 }
 
 Remove-Item "$BUILD_DIR\qbittorrent.fpk" -Force -ErrorAction SilentlyContinue

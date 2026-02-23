@@ -2,8 +2,6 @@
 # cmd/config_callback - qBittorrent配置回调脚本
 # 功能：应用配置变更，更新端口设置和UI类型并重启服务
 
-set -e
-
 APP_NAME="qbittorrent"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"

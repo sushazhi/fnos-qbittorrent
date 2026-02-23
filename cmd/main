@@ -8,8 +8,34 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
+# 日志轮转配置
+LOG_MAX_SIZE=1048576  # 1MB
+LOG_MAX_FILES=3        # 保留3个旧日志文件
+
 # 端口配置
 WEBUI_PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
+
+# 日志轮转函数
+rotate_logs() {
+    if [ -f "$LOG_FILE" ]; then
+        LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
+        if [ "$LOG_SIZE" -gt "$LOG_MAX_SIZE" ]; then
+            # 删除最旧的日志
+            if [ -f "${LOG_FILE}.${LOG_MAX_FILES}" ]; then
+                rm -f "${LOG_FILE}.${LOG_MAX_FILES}"
+            fi
+            # 轮转现有日志文件
+            for i in $(seq $((LOG_MAX_FILES - 1)) -1 1); do
+                if [ -f "${LOG_FILE}.${i}" ]; then
+                    mv "${LOG_FILE}.${i}" "${LOG_FILE}.$((i + 1))"
+                fi
+            done
+            # 移动当前日志
+            mv "$LOG_FILE" "${LOG_FILE}.1"
+            echo "$(date '+%Y-%m-%d %H:%M:%S') - Log rotated" > "$LOG_FILE"
+        fi
+    fi
+}
 
 case "$1" in
 start)
@@ -40,6 +66,9 @@ start)
 
     # 创建必要的目录
     mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config"
+
+    # 日志轮转
+    rotate_logs
 
     # 启动前端口预检测
     if command -v ss >/dev/null 2>&1; then
@@ -89,6 +118,7 @@ EOF
     # 启动qBittorrent-nox
     echo "Starting qBittorrent..."
     "$BIN_DIR/qbittorrent-nox" \
+        --confirm-legal-notice \
         --profile="${DATA_DIR}" \
         --webui-port="$WEBUI_PORT" \
         >> "$LOG_FILE" 2>&1 &

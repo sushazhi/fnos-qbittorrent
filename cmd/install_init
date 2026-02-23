@@ -1,7 +1,28 @@
 #!/bin/bash
 # cmd/install_init - qBittorrent安装初始化脚本
-# 注意：目录和配置创建由 main 脚本在首次启动时处理
+# 功能：验证安装前的必要条件
 
 echo "qBittorrent install_init started"
-echo "Data directories will be created on first start by main script"
+
+# 获取下载目录配置
+SAVE_PATH="${wizard_save_path:-/vol1/1000/downloads/}"
+
+echo "Checking save path: $SAVE_PATH"
+
+# 验证下载目录是否存在
+if [ ! -d "$SAVE_PATH" ]; then
+    echo "错误：下载目录不存在: $SAVE_PATH" > "$TRIM_TEMP_LOGFILE"
+    echo "请在 fnOS 文件管理中创建该目录后重试" >> "$TRIM_TEMP_LOGFILE"
+    exit 1
+fi
+
+# 验证下载目录是否可写
+if [ ! -w "$SAVE_PATH" ]; then
+    echo "错误：下载目录不可写: $SAVE_PATH" > "$TRIM_TEMP_LOGFILE"
+    echo "请检查目录权限" >> "$TRIM_TEMP_LOGFILE"
+    exit 1
+fi
+
+echo "Save path validation passed"
+echo "qBittorrent install_init completed"
 exit 0

@@ -1,8 +1,6 @@
 #!/bin/bash
 # cmd/uninstall_callback - qBittorrent卸载回调脚本
 
-set -e
-
 APP_NAME="qbittorrent"
 
 echo "正在清理 qBittorrent..."

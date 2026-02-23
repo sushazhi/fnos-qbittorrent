@@ -2,8 +2,6 @@
 # cmd/upgrade_init - qBittorrent升级初始化脚本
 # 功能：升级前停止服务并备份数据
 
-set -e
-
 APP_NAME="qbittorrent"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"

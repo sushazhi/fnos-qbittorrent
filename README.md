@@ -5,7 +5,7 @@
 
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.2-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.3-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
@@ -194,6 +194,7 @@ chmod +x build.sh
 
 | 版本 | 更新内容 |
 |------|----------|
+| v5.1.4.3 | 修复了与系统下载进程冲突的问题<br>安装时需配置下载目录（必须已存在） |
 | v5.1.4.2 | 支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改可在应用设置中操作，请勿在WebUI中修改端口 |
 | v5.1.4.1 | 支持安装和应用设置中修改端口（请勿在WebUI中修改端口）<br>添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）<br>默认以应用用户的身份运行 |
 
@@ -217,33 +218,43 @@ fnos-qbittorrent/
 │   └── workflows/          # CI/CD 工作流
 ├── app/                    # fnOS应用资源
 │   ├── bin/                # 构建产生的可执行文件
-│   │   └── qbittorrent-nox  # qBittorrent守护进程
-│   └── ui/                  # WebUI资源
-│       ├── vuetorrent/      # VueTorrent WebUI
-│       └── update-check.js  # VueTorrent 更新检测脚本
+│   │   └── qbittorrent-nox # qBittorrent守护进程
+│   └── ui/                 # WebUI资源
+│       ├── vuetorrent/     # VueTorrent WebUI
+│       ├── config          # 应用入口配置
+│       ├── images/         # 应用图标
+│       └── update-check.js # VueTorrent 更新检测脚本
 ├── cmd/                    # fnOS 生命周期脚本
-│   ├── main               # 应用生命周期管理（启动/停止/重启/状态）
-│   ├── install_init        # 安装初始化
-│   ├── install_callback    # 安装后置配置
-│   ├── config_init         # 配置初始化
+│   ├── main                # 应用生命周期管理（启动/停止/重启/状态）
+│   ├── install_init        # 安装初始化（验证下载目录是否存在）
+│   ├── install_callback    # 安装后置配置（端口/UI类型/下载目录）
+│   ├── config_init         # 配置初始化（读取当前配置）
 │   ├── config_callback     # 配置变更（端口/UI类型）并重启服务
 │   ├── upgrade_init        # 升级前停止服务并备份数据
 │   ├── upgrade_callback    # 升级后恢复数据、设置权限、启动服务
 │   ├── uninstall_init      # 卸载初始化
 │   └── uninstall_callback  # 卸载后清理
 ├── config/                 # 配置文件
-│   ├── privilege           # 权限配置（端口、挂载点）
+│   ├── privilege           # 权限配置
 │   └── resource            # 资源映射配置
 ├── wizard/                 # 向导UI定义
-│   ├── install             # 安装向导
+│   ├── install             # 安装向导（端口/下载目录/UI类型）
+│   ├── config              # 配置向导（端口/UI类型）
 │   ├── uninstall           # 卸载向导
 │   └── upgrade             # 升级向导
+├── docs/                   # 文档目录
+│   ├── fnOS_Developer_Guide.md  # fnOS 开发指南
+│   ├── fnOS_Tools_Guide.md      # fnOS 工具指南
+│   ├── fnOS_Advanced_Guide.md   # fnOS 进阶指南
+│   └── CI_CD.md                 # CI/CD 文档
 ├── build.ps1               # Windows 构建脚本
 ├── build.sh                # Linux 构建脚本
 ├── manifest                # 应用清单文件
 ├── ICON.PNG                # 应用图标（64x64）
 ├── ICON_256.PNG            # 应用图标（256x256）
-└── LICENSE                 # 许可证文件
+├── LICENSE                 # 许可证文件
+├── README.md               # 中文说明文档
+└── README_EN.md            # 英文说明文档
 ```
 
 ## 📄 许可证

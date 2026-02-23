@@ -26,4 +26,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.1.4.3<br>更新日志<br>1. 修复了与系统下载进程冲突的问题<br>
+changelog = v5.1.4.3<br>更新日志<br>1. 修复了与系统下载进程冲突的问题<br>2. 安装时需配置下载目录（必须已存在）<br>

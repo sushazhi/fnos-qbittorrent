@@ -1,8 +1,6 @@
 #!/bin/bash
 # cmd/uninstall_init - qBittorrent卸载初始化脚本
 
-set -e
-
 APP_NAME="qbittorrent"
 echo "正在卸载 qBittorrent..."
 
