@@ -115,6 +115,21 @@ WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
     fi
 
+    # 检查下载目录权限
+    SAVE_PATH=$(grep "Downloads\\\SavePath=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)
+    if [ -n "$SAVE_PATH" ]; then
+        if [ ! -d "$SAVE_PATH" ]; then
+            echo "错误：下载目录（$SAVE_PATH）不存在" > "$TRIM_TEMP_LOGFILE"
+            echo "请在 fnOS 文件管理中创建该目录后重试" >> "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+        if [ ! -r "$SAVE_PATH" ] || [ ! -w "$SAVE_PATH" ]; then
+            echo "错误：下载目录（$SAVE_PATH）没有读写权限" > "$TRIM_TEMP_LOGFILE"
+            echo "请前往 NAS【系统设置 - 应用 - qBittorrent】设置允许访问的文件夹" >> "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+    fi
+
     # 启动qBittorrent-nox
     echo "Starting qBittorrent..."
     "$BIN_DIR/qbittorrent-nox" \

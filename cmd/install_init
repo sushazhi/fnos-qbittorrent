@@ -11,15 +11,8 @@ echo "Checking save path: $SAVE_PATH"
 
 # 验证下载目录是否存在
 if [ ! -d "$SAVE_PATH" ]; then
-    echo "错误：下载目录不存在: $SAVE_PATH" > "$TRIM_TEMP_LOGFILE"
+    echo "错误：下载目录（$SAVE_PATH）不存在" > "$TRIM_TEMP_LOGFILE"
     echo "请在 fnOS 文件管理中创建该目录后重试" >> "$TRIM_TEMP_LOGFILE"
-    exit 1
-fi
-
-# 验证下载目录是否可写
-if [ ! -w "$SAVE_PATH" ]; then
-    echo "错误：下载目录不可写: $SAVE_PATH" > "$TRIM_TEMP_LOGFILE"
-    echo "请检查目录权限" >> "$TRIM_TEMP_LOGFILE"
     exit 1
 fi
 

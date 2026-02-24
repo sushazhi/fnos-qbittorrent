@@ -52,6 +52,10 @@
         "helpText": "⚠️ <b>目录必须已存在（否则会导致安装失败）</b>，请先在文件管理中创建"
       },
       {
+        "type": "tips",
+        "helpText": "🔐 <b>安装后请设置文件夹访问权限：</b>前往【系统设置 - 应用 - qBittorrent】设置允许访问的文件夹"
+      },
+      {
         "type": "text",
         "field": "wizard_save_path",
         "label": "下载保存目录",
