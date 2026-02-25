@@ -21,7 +21,7 @@ WEBUI_PORT="${wizard_app_port:-8080}"
 UI_TYPE="${wizard_ui_type:-vuetorrent}"
 
 # 获取下载目录配置
-SAVE_PATH="${wizard_save_path:-/vol1/1000/downloads/}"
+SAVE_PATH="${wizard_save_path:-/vol1/@appshare/qbittorrent/downloads/}"
 
 echo "Configuring UI type: $UI_TYPE"
 echo "Port: $WEBUI_PORT"
@@ -52,29 +52,35 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "Configuration file exists, updating port/savepath/UI settings while preserving other settings..."
 
     # 只更新端口、下载目录、UI界面，保留其他用户设置（如用户名密码等）
+    # 兼容新旧配置格式：同时更新 Session\DefaultSavePath 和 Downloads\SavePath
     TMP_CONFIG=$(mktemp)
     awk -v port="${WEBUI_PORT}" -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" '
-        BEGIN { port_updated = 0; alt_ui_updated = 0; save_updated = 0; }
+        BEGIN { port_updated = 0; alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; }
         {
-            if ($0 == "[Preferences]") {
+            if ($0 == "[BitTorrent]") {
+                print $0
+                print "Session\\DefaultSavePath=" save_path
+                bittorrent_section = 1
+                save_updated = 1
+            }
+            else if ($0 == "[Preferences]") {
                 print $0
                 print "WebUI\\Port=" port
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
-                print "Downloads\\SavePath=" save_path
                 port_updated = 1
                 alt_ui_updated = 1
-                save_updated = 1
             }
-            else if (!/^WebUI\\Port=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^Downloads\\SavePath=/) {
+            else if (!/^WebUI\\Port=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
                 print $0
             }
         }
         END {
             if (!port_updated && !alt_ui_updated && !save_updated) {
+                print "[BitTorrent]"
+                print "Session\\DefaultSavePath=" save_path
                 print "[Preferences]"
                 print "WebUI\\Port=" port
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
-                print "Downloads\\SavePath=" save_path
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
@@ -89,9 +95,10 @@ else
         vuetorrent)
             # VueTorrent: 启用备用UI
             cat > "$CONFIG_FILE" << CFGEOF
+[BitTorrent]
+Session\DefaultSavePath=${SAVE_PATH}
 [Preferences]
 General\Locale=zh_CN
-Downloads\SavePath=${SAVE_PATH}
 WebUI\Address=*
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
@@ -108,9 +115,10 @@ CFGEOF
         native)
             # 原生UI: 禁用备用UI
             cat > "$CONFIG_FILE" << CFGEOF
+[BitTorrent]
+Session\DefaultSavePath=${SAVE_PATH}
 [Preferences]
 General\Locale=zh_CN
-Downloads\SavePath=${SAVE_PATH}
 WebUI\Address=*
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true

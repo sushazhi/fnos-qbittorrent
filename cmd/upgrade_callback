@@ -88,10 +88,11 @@ else
         mkdir -p "$CONFIG_DIR"
 
         cat > "$CONFIG_FILE" << EOF
+[BitTorrent]
+Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
+Session\TempPath=/vol1/@appshare/qbittorrent/temp/
 [Preferences]
 General\Locale=zh_CN
-Downloads\SavePath=/vol1/1000/downloads/
-Downloads\TempPath=/vol1/1000/temp/
 WebUI\Address=*
 WebUI\Port=${wizard_app_port:-8080}
 WebUI\LocalHostAuth=true

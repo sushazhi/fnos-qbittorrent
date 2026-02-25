@@ -99,10 +99,11 @@ start)
     # 只在配置文件不存在时创建默认配置
     if [ ! -f "$CONFIG_FILE" ]; then
         cat > "$CONFIG_FILE" << EOF
+[BitTorrent]
+Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
+Session\TempPath=/vol1/@appshare/qbittorrent/temp/
 [Preferences]
 General\Locale=zh_CN
-Downloads\SavePath=/vol1/1000/downloads/
-Downloads\TempPath=/vol1/1000/temp/
 WebUI\Address=*
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
@@ -115,8 +116,8 @@ WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
     fi
 
-    # 检查下载目录权限
-    SAVE_PATH=$(grep "Downloads\\\SavePath=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)
+    # 检查下载目录权限（兼容新旧配置格式）
+    SAVE_PATH=$(grep -E "(Session\\\\DefaultSavePath|Downloads\\\\SavePath)=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)
     if [ -n "$SAVE_PATH" ]; then
         if [ ! -d "$SAVE_PATH" ]; then
             echo "错误：下载目录（$SAVE_PATH）不存在" > "$TRIM_TEMP_LOGFILE"

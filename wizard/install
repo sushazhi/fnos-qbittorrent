@@ -59,7 +59,7 @@
         "type": "text",
         "field": "wizard_save_path",
         "label": "下载保存目录",
-        "initValue": "/vol1/1000/downloads/",
+        "initValue": "/vol1/@appshare/qbittorrent/downloads/",
         "rules": [
           {
             "required": true,

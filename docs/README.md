@@ -123,6 +123,7 @@
 | 配置文件 | Developer Guide | 配置文件 |
 | 向导界面 | Developer Guide | 向导界面 |
 | 环境变量 | Developer Guide | 环境变量 |
+| 数据共享路径 | Developer Guide | 环境变量 → TRIM_DATA_SHARE_PATHS |
 | 依赖管理 | Advanced Guide | 应用依赖关系 |
 | 运行时环境 | Advanced Guide | 运行时环境 |
 | 中间件服务 | Advanced Guide | 中间件服务 |
@@ -145,10 +146,20 @@
 | 我要设计图标 | Tools Guide → 图标 Icon 设计规范 |
 | 我要打包应用 | Tools Guide → fnpack 完整使用指南 |
 | 我要安装应用 | Tools Guide → appcenter-cli 完整使用指南 |
+| 我要使用数据共享路径 | Developer Guide → 环境变量 → TRIM_DATA_SHARE_PATHS |
 
 ---
 
 ## 📝 文档更新记录
+
+### 2025-02-25
+
+- ✅ 补充 `TRIM_DATA_SHARE_PATHS` 环境变量说明
+- ✅ 添加数据共享路径使用示例
+- ✅ 补充安装后目录结构说明
+- ✅ 补充目录功能说明表格
+- ✅ 更新 manifest 字段说明（platform、install_dep_apps 等）
+- ✅ 补充 resource 配置：usr-local-linker、docker-project
 
 ### 2025-02-22
 
@@ -166,8 +177,61 @@
 ### 官方资源
 
 - [fnOS 官方网站](https://www.fnnas.com/)
-- [fnOS 开发者文档](https://developer.fnnas.com/)
+- [fnOS 开发者文档](https://developer.fnnas.com/docs/guide)
 - [fnOS 论坛](https://club.fnnas.com/)
+
+### 官方文档链接
+
+> 来源：https://developer.fnnas.com/docs/category/开发指南
+
+**📚 【基础】**
+
+| 文档 | URL |
+|------|-----|
+| 架构概述 | https://developer.fnnas.com/docs/core-concepts/framework |
+| Manifest | https://developer.fnnas.com/docs/core-concepts/manifest |
+| 环境变量 | https://developer.fnnas.com/docs/core-concepts/environment-variables |
+| 应用权限 | https://developer.fnnas.com/docs/core-concepts/privilege |
+| 应用资源 | https://developer.fnnas.com/docs/core-concepts/resource |
+| 应用入口 | https://developer.fnnas.com/docs/core-concepts/app-entry |
+| 用户向导 | https://developer.fnnas.com/docs/core-concepts/wizard |
+
+**🔥 【进阶】**
+
+| 文档 | URL |
+|------|-----|
+| 应用依赖关系 | https://developer.fnnas.com/docs/core-concepts/dependency |
+| 运行时环境 | https://developer.fnnas.com/docs/core-concepts/runtime |
+| 中间件服务 | https://developer.fnnas.com/docs/core-concepts/middleware |
+
+**💻 【实战】**
+
+| 文档 | URL |
+|------|-----|
+| Docker 应用构建 | https://developer.fnnas.com/docs/core-concepts/docker |
+| Native 应用构建 | https://developer.fnnas.com/docs/core-concepts/native |
+
+**📜 【规范】**
+
+| 文档 | URL |
+|------|-----|
+| 图标 Icon | https://developer.fnnas.com/docs/core-concepts/icon |
+
+**🚀 快速开始**
+
+| 文档 | URL |
+|------|-----|
+| 准备工作 | https://developer.fnnas.com/docs/quick-started/prerequisites |
+| 创建应用 | https://developer.fnnas.com/docs/quick-started/create-application |
+| 测试应用 | https://developer.fnnas.com/docs/quick-started/test-application |
+| 上架应用 | https://developer.fnnas.com/docs/quick-started/publish-application |
+
+**🔧 CLI 工具**
+
+| 文档 | URL |
+|------|-----|
+| fnpack | https://developer.fnnas.com/docs/cli/fnpack |
+| appcenter-cli | https://developer.fnnas.com/docs/cli/appcentercli |
 
 ### 开发工具
 

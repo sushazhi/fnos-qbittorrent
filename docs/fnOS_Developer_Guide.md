@@ -246,6 +246,8 @@ appcenter-cli install-local myapp-1.0.0.fpk
 
 ### 标准目录结构
 
+**开发时目录结构：**
+
 ```
 my-app/
 ├── manifest              # 应用清单文件 (必需)
@@ -284,6 +286,58 @@ my-app/
     ├── README.md
     └── ...
 ```
+
+**安装后目录结构：**
+
+```
+/var/apps/[appname]/
+├── cmd/                  # 生命周期脚本
+│   ├── main
+│   ├── install_init
+│   ├── install_callback
+│   └── ...
+├── config/
+│   ├── privilege
+│   └── resource
+├── ICON.PNG
+├── ICON_256.PNG
+├── LICENSE
+├── manifest
+├── etc -> /vol[volume_number]/@appconf/[appname]      # 静态配置文件
+├── home -> /vol[volume_number]/@apphome/[appname]     # 用户数据文件
+├── target -> /vol[volume_number]/@appcenter/[appname] # 应用可执行文件
+├── tmp -> /vol[volume_number]/@apptemp/[appname]      # 临时文件
+├── var -> /vol[volume_number]/@appdata/[appname]      # 运行时动态数据
+├── shares/                                             # 数据共享目录
+│   ├── datashare1 -> /vol[volume_number]/@appshare/datashare1
+│   └── datashare2 -> /vol[volume_number]/@appshare/datashare2
+└── wizard/
+    ├── install
+    ├── uninstall
+    ├── upgrade
+    └── config
+```
+
+### 目录功能说明
+
+**开发者定义目录：**
+
+| 目录 | 说明 |
+|------|------|
+| `cmd` | 存放应用生命周期管理的脚本文件 |
+| `wizard` | 存放用户交互向导的配置文件 |
+
+**系统自动创建目录：**
+
+| 目录 | 说明 |
+|------|------|
+| `target` | 应用可执行文件的存放位置 |
+| `etc` | 静态配置文件存放位置 |
+| `var` | 运行时动态数据存放位置 |
+| `tmp` | 临时文件存放位置 |
+| `home` | 用户数据文件存放位置 |
+| `meta` | 应用元数据存放位置 |
+| `shares` | 数据共享目录（根据 resource 配置自动创建）|
 
 ### 重要规则
 
@@ -752,7 +806,7 @@ exit 0
 
 ### manifest 文件 (必需)
 
-**功能**: 应用清单，定义应用基本信息
+**功能**: 应用清单，定义应用基本信息。就像应用的"身份证"，告诉系统应用是谁、需要什么、怎么运行。
 
 **格式**: INI 格式
 
@@ -761,12 +815,12 @@ exit 0
 ```ini
 # 应用基本信息
 appname = myapp                    # 应用名称 (只能包含小写字母、数字、下划线)
-version = 1.0.0                    # 版本号 (语义化版本)
+version = 1.0.0                    # 版本号 (语义化版本，格式: x[.y[.z]][-build])
 display_name = My Application      # 显示名称
 desc = 应用描述                    # 应用描述 (支持HTML)
 
 # 系统要求
-platform = all                     # 支持平台: all, amd64, arm64
+platform = all                     # 支持平台: x86, arm, loongarch, risc-v, all
 os_min_version = 1.1.19           # 最低系统版本
 source = thirdparty               # 来源: thirdparty, official
 
@@ -777,7 +831,7 @@ distributor = Distributor Name    # 分发者
 distributor_url = https://...     # 分发者网址
 
 # 安装控制
-ctl_stop = true                   # 卸载前是否停止服务
+ctl_stop = true                   # 是否显示启动/停止功能
 
 # 端口配置 (可选)
 service_port = ${wizard_app_port} # 服务端口 (支持向导变量)
@@ -787,9 +841,41 @@ checkport = true                  # 是否检查端口占用
 desktop_uidir = ui                # UI目录
 desktop_applaunchname = myapp.Application  # 应用启动名
 
+# 依赖管理 (可选)
+install_dep_apps = mariaDB:redis  # 依赖应用列表，格式: app1>2.2.2:app2:app3
+
+# 权限控制 (可选)
+disable_authorization_path = false # 是否禁用授权目录功能
+
 # 更新日志 (可选)
 changelog = v1.0.0<br>首次发布
 ```
+
+**字段详细说明**:
+
+| 字段 | 说明 | 是否必需 |
+|------|------|----------|
+| `appname` | 应用唯一标识符，只能包含小写字母、数字、下划线 | 必需 |
+| `version` | 版本号，格式: x[.y[.z]][-build] | 必需 |
+| `display_name` | 应用中心显示的名称 | 必需 |
+| `desc` | 应用介绍，支持 HTML 格式 | 必需 |
+| `platform` | 架构类型: x86, arm, loongarch, risc-v, all | 必需 |
+| `source` | 应用来源，固定为 thirdparty | 必需 |
+| `os_min_version` | 支持的最低系统版本 | 推荐 |
+| `os_max_version` | 支持的最高系统版本 | 可选 |
+| `maintainer` | 开发者或开发团队名称 | 推荐 |
+| `maintainer_url` | 开发者网站或联系方式 | 可选 |
+| `distributor` | 应用发布者 | 可选 |
+| `distributor_url` | 发布者网站 | 可选 |
+| `ctl_stop` | 是否显示启动/停止功能，默认 true | 可选 |
+| `install_type` | 安装类型，设为 root 时安装到系统分区 | 可选 |
+| `install_dep_apps` | 依赖应用列表，格式: app1>2.2.2:app2:app3 | 可选 |
+| `service_port` | 应用监听的端口号 | 可选 |
+| `checkport` | 是否启用端口检查，默认 true | 可选 |
+| `desktop_uidir` | UI 组件目录路径，默认 ui | 可选 |
+| `desktop_applaunchname` | 应用启动入口 ID | 可选 |
+| `disable_authorization_path` | 是否禁用授权目录功能，默认 false | 可选 |
+| `changelog` | 应用更新日志 | 可选 |
 
 **完整示例**:
 
@@ -850,17 +936,18 @@ changelog = v5.1.4.3<br>1. 修复了与系统下载进程冲突的问题
 
 ### resource 文件 (必需)
 
-**功能**: 定义应用需要的系统资源
+**功能**: 定义应用需要的系统资源。就像应用的"能力清单"，告诉系统应用需要哪些额外的功能和权限。
 
 **格式**: JSON
 
-**字段说明**:
-- `data-share`: 数据共享配置
-  - `shares`: 共享目录列表
-    - `name`: 共享名称
-    - `permission`: 权限配置
-      - `rw`: 读写权限用户列表
-      - `ro`: 只读权限用户列表
+#### data-share - 数据共享
+
+数据共享功能允许应用与用户共享特定的数据目录，让用户可以直接在文件管理器中访问和管理这些数据。
+
+**特点**:
+- 共享目录仅在系统管理员的文件管理 - 应用文件中可见
+- 可以设置不同的访问权限：只读、读写
+- 支持多级目录结构
 
 **示例**:
 
@@ -869,15 +956,124 @@ changelog = v5.1.4.3<br>1. 修复了与系统下载进程冲突的问题
     "data-share": {
         "shares": [
             {
-                "name": "myapp",
+                "name": "documents",
                 "permission": {
-                    "rw": ["myapp"]
+                    "rw": ["myapp_user"]
+                }
+            },
+            {
+                "name": "documents/backups",
+                "permission": {
+                    "ro": ["myapp_user"]
                 }
             }
         ]
     }
 }
 ```
+
+**权限类型**:
+- `rw` - 读写权限：应用可以读取和修改文件
+- `ro` - 只读权限：应用只能读取文件，不能修改
+
+#### usr-local-linker - 系统集成
+
+系统集成功能允许应用在启动时创建软链接到系统目录，让其他应用或系统工具能够直接访问应用提供的功能。
+
+**特点**:
+- 应用启动时自动创建软链接
+- 应用停止时自动移除软链接
+- 支持 bin、lib、etc 三个系统目录
+
+**示例**:
+
+```json
+{
+    "usr-local-linker": {
+        "bin": [
+            "bin/myapp-cli",
+            "bin/myapp-server"
+        ],
+        "lib": [
+            "lib/mylib.so",
+            "lib/mylib.a"
+        ],
+        "etc": [
+            "etc/myapp.conf",
+            "etc/myapp.d/default.conf"
+        ]
+    }
+}
+```
+
+**链接说明**:
+- `bin` - 可执行文件链接到 `/usr/local/bin/`
+- `lib` - 库文件链接到 `/usr/local/lib/`
+- `etc` - 配置文件链接到 `/usr/local/etc/`
+
+#### docker-project - Docker 项目支持
+
+Docker 项目支持让应用可以基于 Docker Compose 运行，支持复杂的容器编排和多服务架构。
+
+**项目结构**:
+
+```
+myapp/
+├── app/
+│   └── docker/
+│       └── docker-compose.yaml
+├── manifest
+├── cmd/
+├── config/
+└── ...
+```
+
+**Docker Compose 示例**:
+
+```yaml
+# app/docker/docker-compose.yaml
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "8080:80"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+    depends_on:
+      - db
+  db:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=myapp
+    volumes:
+      - db_data:/var/lib/mysql
+volumes:
+  db_data:
+```
+
+**资源配置**:
+
+```json
+{
+    "docker-project": {
+        "projects": [
+            {
+                "name": "myapp-stack",
+                "path": "docker"
+            }
+        ]
+    }
+}
+```
+
+**配置说明**:
+- `name` - Docker Compose 项目的名称，用于标识和管理
+- `path` - 相对于 app 目录的路径，指向包含 docker-compose.yaml 的文件夹
 
 **完整示例**:
 
@@ -1180,6 +1376,7 @@ fnOS 为应用提供以下标准环境变量:
 | `TRIM_TEMP_LOGFILE` | 临时日志文件 | `/tmp/myapp.log` |
 | `TRIM_APP_USER` | 应用用户名 | `myapp` |
 | `TRIM_APP_GROUP` | 应用用户组 | `myapp` |
+| `TRIM_DATA_SHARE_PATHS` | 数据共享路径列表，多个路径用冒号分隔 | `/vol1/@appshare/myapp:/vol1/1000/downloads` |
 
 ### 向导变量
 
@@ -1214,6 +1411,13 @@ PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
 # 日志文件
 LOG_FILE="${DATA_DIR}/myapp.log"
 ERROR_LOG="${TRIM_TEMP_LOGFILE}"
+
+# 数据共享路径（取第一个路径）
+if [ -n "$TRIM_DATA_SHARE_PATHS" ]; then
+    SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+else
+    SHARE_DIR="/vol1/@appshare/${APP_NAME}"
+fi
 ```
 
 ---
