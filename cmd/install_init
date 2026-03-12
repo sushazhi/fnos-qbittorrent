@@ -2,20 +2,64 @@
 # cmd/install_init - qBittorrent安装初始化脚本
 # 功能：验证安装前的必要条件
 
+set -u
+
 echo "qBittorrent install_init started"
+
+log_error() {
+    local msg="$1"
+    echo "$msg"
+    if [ -n "${TRIM_TEMP_LOGFILE:-}" ]; then
+        echo "$msg" > "$TRIM_TEMP_LOGFILE"
+    fi
+}
+
+is_valid_port() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] || return 1
+    [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
+}
+
+is_port_in_use() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -lnt "( sport = :$port )" | awk 'NR>1 {found=1} END {exit !found}'
+    else
+        return 1
+    fi
+}
 
 # 获取下载目录配置
 SAVE_PATH="${wizard_save_path:-/vol1/1000/downloads/}"
+WEBUI_PORT="${wizard_app_port:-8080}"
 
 echo "Checking save path: $SAVE_PATH"
+echo "Checking webui port: $WEBUI_PORT"
 
 # 验证下载目录是否存在
 if [ ! -d "$SAVE_PATH" ]; then
-    echo "错误：下载目录（$SAVE_PATH）不存在" > "$TRIM_TEMP_LOGFILE"
-    echo "请在 fnOS 文件管理中创建该目录后重试" >> "$TRIM_TEMP_LOGFILE"
+    log_error "错误：下载目录（$SAVE_PATH）不存在，请先在 fnOS 文件管理中创建后重试"
     exit 1
 fi
 
-echo "Save path validation passed"
+# 验证下载目录可写
+if [ ! -w "$SAVE_PATH" ]; then
+    log_error "错误：下载目录（$SAVE_PATH）不可写，请为应用授予目录访问权限"
+    exit 1
+fi
+
+# 验证端口合法性
+if ! is_valid_port "$WEBUI_PORT"; then
+    log_error "错误：端口号（$WEBUI_PORT）无效，请输入 1-65535 之间的整数"
+    exit 1
+fi
+
+# 验证端口可用（ss 不可用时跳过）
+if is_port_in_use "$WEBUI_PORT"; then
+    log_error "错误：端口号（$WEBUI_PORT）已被占用，请更换后重试"
+    exit 1
+fi
+
+echo "Pre-install validation passed"
 echo "qBittorrent install_init completed"
 exit 0
