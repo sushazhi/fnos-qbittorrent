@@ -821,7 +821,7 @@ desc = 应用描述                    # 应用描述 (支持HTML)
 
 # 系统要求
 platform = all                     # 支持平台: x86, arm, loongarch, risc-v, all
-os_min_version = 1.1.19           # 最低系统版本
+os_min_version = 0.9.0            # 最低系统版本 (官方要求)
 source = thirdparty               # 来源: thirdparty, official
 
 # 开发者信息
@@ -1369,14 +1369,47 @@ fnOS 为应用提供以下标准环境变量:
 
 | 变量名 | 说明 | 示例值 |
 |--------|------|--------|
+| `TRIM_APPNAME` | 应用名称（来自 manifest 中的 appname） | `myapp` |
+| `TRIM_APPVER` | 应用版本号 | `1.0.0` |
+| `TRIM_OLD_APPVER` | 升级前的版本号（仅在升级时可用） | `0.9.0` |
 | `TRIM_APPDEST` | 应用安装目录 | `/var/apps/myapp` |
 | `TRIM_PKGVAR` | 应用数据目录 | `/vol1/@appdata/myapp` |
 | `TRIM_PKGTMP` | 应用临时目录 | `/vol1/@apptmp/myapp` |
+| `TRIM_PKGETC` | 配置文件目录路径（etc 文件夹） | `/vol1/@appconf/myapp` |
+| `TRIM_PKGHOME` | 用户数据目录路径（home 文件夹） | `/vol1/@apphome/myapp` |
+| `TRIM_PKGMETA` | 元数据目录路径（meta 文件夹） | `/vol1/@appmeta/myapp` |
+| `TRIM_APPDEST_VOL` | 应用安装的存储空间路径 | `/vol1` |
 | `TRIM_SERVICE_PORT` | 服务端口 | `8080` |
 | `TRIM_TEMP_LOGFILE` | 临时日志文件 | `/tmp/myapp.log` |
-| `TRIM_APP_USER` | 应用用户名 | `myapp` |
-| `TRIM_APP_GROUP` | 应用用户组 | `myapp` |
+| `TRIM_TEMP_UPGRADE_FOLDER` | 升级过程的临时目录 | `/tmp/upgrade_myapp` |
+| `TRIM_PKGINST_TEMP_DIR` | 安装包解压的临时目录 | `/tmp/install_myapp` |
+| `TRIM_TEMP_TPKFILE` | fpk 包解压目录 | `/tmp/tpk_myapp` |
+| `TRIM_USERNAME` | 应用用户名 | `myapp` |
+| `TRIM_GROUPNAME` | 应用用户组 | `myapp` |
+| `TRIM_UID` | 应用用户 ID | `1000` |
+| `TRIM_GID` | 应用用户组 ID | `1000` |
+| `TRIM_RUN_USERNAME` | 当前执行脚本的用户名 | `root` |
+| `TRIM_RUN_GROUPNAME` | 当前执行脚本的用户组名 | `root` |
+| `TRIM_RUN_UID` | 当前执行脚本的用户 ID | `0` |
+| `TRIM_RUN_GID` | 当前执行脚本的用户组 ID | `0` |
 | `TRIM_DATA_SHARE_PATHS` | 数据共享路径列表，多个路径用冒号分隔 | `/vol1/@appshare/myapp:/vol1/1000/downloads` |
+| `TRIM_DATA_ACCESSIBLE_PATHS` | 可访问路径列表 | `/vol1/@appshare/myapp` |
+| `TRIM_APP_STATUS` | 当前状态 (INSTALL/START/UPGRADE/UNINSTALL/STOP/CONFIG) | `START` |
+
+### 系统相关环境变量
+
+fnOS 还提供以下系统相关的环境变量:
+
+| 变量名 | 说明 | 示例值 |
+|--------|------|--------|
+| `TRIM_SYS_VERSION` | 完整的系统版本号 | `0.9.27` |
+| `TRIM_SYS_VERSION_MAJOR` | 系统主版本号 | `0` |
+| `TRIM_SYS_VERSION_MINOR` | 系统次版本号 | `9` |
+| `TRIM_SYS_VERSION_BUILD` | 系统构建号 | `27` |
+| `TRIM_SYS_ARCH` | 系统 CPU 架构（如 x86_64） | `x86_64` |
+| `TRIM_KERNEL_VERSION` | 系统内核版本号 | `6.12.18` |
+| `TRIM_SYS_MACHINE_ID` | 设备的唯一标识符 | `a1b2c3d4e5f6...` |
+| `TRIM_SYS_LANGUAGE` | 系统语言设置 | `zh_CN` |
 
 ### 向导变量
 
@@ -1597,6 +1630,38 @@ set -o pipefail  # 管道命令任一失败即返回失败
 
 #### 错误处理
 
+**版本要求**: V1.1.8+
+
+`TRIM_TEMP_LOGFILE` 是系统日志文件路径（用户可见的日志），用于向前端展示错误信息。
+
+**支持的脚本**:
+
+| 脚本 | 说明 |
+|------|------|
+| `cmd/main` | 运行状态管理脚本 |
+| `cmd/install_init` | 安装前准备 |
+| `cmd/install_callback` | 安装后配置 |
+| `cmd/upgrade_init` | 升级前准备 |
+| `cmd/upgrade_callback` | 升级后处理 |
+
+**不支持的脚本**: `cmd/config_*`、`cmd/uninstall_*`
+
+**工作机制**:
+
+```
+脚本执行遇到错误
+       ↓
+写入错误日志到 $TRIM_TEMP_LOGFILE
+       ↓
+exit 1 返回错误码
+       ↓
+系统自动捕获
+       ↓
+前端 Dialog 对话框展示给用户
+```
+
+**使用示例**:
+
 ```bash
 # 推荐方式
 if ! mkdir -p "$DATA_DIR"; then
@@ -1609,7 +1674,23 @@ mkdir -p "$DATA_DIR" || {
     echo "Error: Failed to create directory" > "$TRIM_TEMP_LOGFILE"
     exit 1
 }
+
+# 检查依赖
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker is required" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+fi
+
+# 检查端口占用
+if netstat -tuln | grep -q ":$PORT "; then
+    echo "Error: Port $PORT is already in use" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+fi
 ```
+
+**注意事项**:
+- 必须配合 `exit 1` 才能触发前端展示
+- 错误信息会直接展示给用户，建议使用清晰易懂的描述
 
 #### 日志记录
 
@@ -1776,7 +1857,7 @@ fi
 
 ```bash
 # 设置文件所有者
-chown -R "${TRIM_APP_USER}:${TRIM_APP_GROUP}" "$DATA_DIR"
+chown -R "${TRIM_USERNAME}:${TRIM_GROUPNAME}" "$DATA_DIR"
 
 # 设置可执行权限
 chmod +x "${BIN_DIR}/myapp"

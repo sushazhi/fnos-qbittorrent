@@ -255,9 +255,29 @@ print(" [x] Sent 'Hello World!'")
 connection.close()
 ```
 
-### MariaDB
+### MySQL
 
-即将上线...
+如果你的应用需要依赖 MySQL，请在 `manifest` 的 `install_dep_apps` 字段中添加 mysql。
+
+**manifest 配置:**
+
+```yaml
+install_dep_apps=mysql
+```
+
+**Python 使用示例:**
+
+```python
+import pymysql
+
+connection = pymysql.connect(
+    host='127.0.0.1',
+    port=3306,
+    user='root',
+    password='password',
+    database='test'
+)
+```
 
 ---
 
@@ -439,7 +459,7 @@ npm run build
 appname=fnnas.notepad
 version=0.0.1
 desc=A simple notepad
-arch=x86_64
+platform=x86
 display_name=Notepad
 maintainer=someone
 distributor=someone
