@@ -40,18 +40,8 @@ else
     exit 1
 fi
 
-# 确保配置存在（保留数据时已有，否则创建默认配置）
-echo "[3/3] 检查配置..."
-
-if [ -f "$CONFIG_FILE" ]; then
-    echo "使用现有配置: $CONFIG_FILE"
-    # 确保VueTorrent路径正确
-    sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE" 2>/dev/null || true
-fi
-
-# 恢复数据（如果存在备份）
-echo ""
-echo "[可选] 从备份恢复数据..."
+# 恢复数据（如果存在备份）- 必须在配置检查之前执行
+echo "[3/3] 检查并恢复数据..."
 
 # 检查是否有备份
 BACKUP_EXISTS=false
@@ -70,23 +60,47 @@ if [ "$BACKUP_EXISTS" = true ]; then
     # 删除备份
     rm -rf "$BACKUP_DIR"
     echo "备份已清理"
+fi
+
+# 确保配置存在（恢复后检查，无数据时创建默认配置）
+echo ""
+echo "检查配置文件..."
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "使用现有配置: $CONFIG_FILE"
+    # 确保VueTorrent路径正确
+    sed -i "s|__VUETORRENT_ROOT__|${TRIM_APPDEST}/ui/vuetorrent|g" "$CONFIG_FILE" 2>/dev/null || true
 else
-    # 没有备份：检查是否有真实数据
+    # 没有配置文件：检查是否有真实数据
     CONFIG_EXISTS=false
-    if [ -f "$CONFIG_FILE" ]; then
-        # 检查是否有种子/RSS等数据目录
-        if [ -d "$DATA_DIR/qBittorrent" ] && [ -n "$(ls -A "$DATA_DIR/qBittorrent" 2>/dev/null)" ]; then
-            CONFIG_EXISTS=true
-        fi
+    if [ -d "$DATA_DIR/qBittorrent" ] && [ -n "$(ls -A "$DATA_DIR/qBittorrent" 2>/dev/null)" ]; then
+        CONFIG_EXISTS=true
     fi
 
     if [ "$CONFIG_EXISTS" = true ]; then
-        echo "发现现有数据，使用当前数据"
+        echo "发现现有数据但无配置文件，创建默认配置"
+        mkdir -p "$CONFIG_DIR"
+        cat > "$CONFIG_FILE" << EOF
+[BitTorrent]
+Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
+Session\TempPath=/vol1/@appshare/qbittorrent/temp/
+[Preferences]
+General\Locale=zh_CN
+WebUI\Address=*
+WebUI\Port=${wizard_app_port:-8080}
+WebUI\LocalHostAuth=true
+WebUI\Username=admin
+WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\ClickjackingProtection=false
+WebUI\CSRFProtection=false
+WebUI\AlternativeUIEnabled=true
+WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
+EOF
+        echo "默认配置已创建"
     else
         # 没有数据也没有备份：创建默认配置
-        echo "无备份且无现有数据，保留默认配置"
+        echo "无备份且无现有数据，创建默认配置"
         mkdir -p "$CONFIG_DIR"
-
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
 Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
