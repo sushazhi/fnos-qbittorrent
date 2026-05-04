@@ -5,8 +5,8 @@
 
 一款功能强大、美观易用的BitTorrent下载工具，飞牛NAS版。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.1.4.3-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.31.3-purple?style=flat-square&logo=vue.js)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.0.0-blue?style=flat-square&logo=qbittorrent)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.32.1-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -61,7 +61,7 @@
 
 进入 qBittorrent → 设置 → Web UI → 取消勾选"使用备用Web UI"
 
-> ⚠️ **注意**：使用原生UI时，必须**新标签页打开**进入设置页面，在飞牛的iframe窗口内访问设置修改无效。
+> ⚠️ **注意**：使用原生UI时，必须**新标签页打开**进入设置页面，在应用窗口内访问设置修改无效。
 
 ---
 
@@ -73,12 +73,12 @@
 
 1. 打开 **应用中心**
 2. 左下角点击 **手动安装**
-3. 选择 `qbittorrent-vuetorrent-5.1.4.2-arm64.fpk` 文件
+3. 选择 `qbittorrent-vuetorrent-5.2.0.0-arm64.fpk` 文件
 
 或使用命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-vuetorrent-5.1.4.2-arm64.fpk
+appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.0-arm64.fpk
 ```
 
 ---
@@ -98,16 +98,17 @@ cd C:\Path\To\fnos-qbittorrent
 .\build.ps1
 
 # 4. 或指定参数
-.\build.ps1 -Version 5.1.4.2    # 指定版本号
+.\build.ps1 -Version 5.2.0.0    # 指定版本号
 .\build.ps1 -Arch amd64         # 指定架构（arm64 或 amd64）
 .\build.ps1 -ForceDownload      # 强制重新下载所有文件
 ```
 
 **构建特性：**
-- 自动使用 GitHub 加速代理（hk.gh-proxy.org → ghfast.top）
+- 自动从 manifest 读取版本号，取前三位作为 qBittorrent-nox 版本
+- 自动通过 GitHub API 获取对应版本的最新 release
+- 智能代理策略：gh-proxy.org（10s超时）→ ghfast.top 自动切换
 - qBittorrent 二进制和 VueTorrent UI 通过代理下载
 - fnpack 工具直接访问（国内服务器更快）
-- GitHub API 直接访问（代理无法正确代理 API）
 - 支持版本缓存，避免重复下载
 
 ### Linux 本地构建
@@ -122,25 +123,27 @@ chmod +x build.sh
 ./build.sh
 
 # 3. 或指定参数
-./build.sh --version 5.1.4.2  # 指定版本号
+./build.sh --version 5.2.0.0  # 指定版本号
 ./build.sh --arch arm64       # 指定架构（arm64 或 amd64）
 ./build.sh --force            # 强制重新下载所有文件
 ```
 
 **构建特性：**
-- 自动使用 GitHub 加速代理（hk.gh-proxy.org → ghfast.top）
+- 自动从 manifest 读取版本号，取前三位作为 qBittorrent-nox 版本
+- 自动通过 GitHub API 获取对应版本的最新 release
+- 智能代理策略：gh-proxy.org（10s超时）→ ghfast.top 自动切换
 - qBittorrent 二进制和 VueTorrent UI 通过代理下载
 - fnpack 工具直接访问（国内服务器更快）
-- GitHub API 直接访问（代理无法正确代理 API）
 - 支持版本缓存，避免重复下载
 
 ### 构建说明
 
-- 构建脚本会自动从 manifest 读取版本号
+- 构建脚本自动从 manifest 读取版本号，前三位作为 qBittorrent-nox 版本
+- 通过 GitHub API 自动获取匹配版本的最新 qBittorrent-nox release
 - 自动下载 VueTorrent WebUI 和 qBittorrent 静态二进制
 - 自动注入更新检测脚本到 VueTorrent
 - 生成的 fpk 文件可直接安装
-- 使用智能代理策略，大幅提升下载速度和成功率
+- 智能代理策略：MAIN_PROXY 10s 超时自动切换 BINARY_PROXY
 
 ### 输出文件
 
@@ -186,7 +189,7 @@ chmod +x build.sh
 
 > ⚠️ **安全提示**：请首次登录后立即修改默认密码！
 > 
-> 📌 **端口修改**：安装或应用设置中可自定义端口，**请勿在WebUI中修改端口**，否则飞牛iframe窗口无法访问UI。
+> 📌 **端口修改**：安装或应用设置中可自定义端口，**请勿在WebUI中修改端口**，否则飞牛iframe应用窗口无法访问UI。
 
 ---
 
@@ -194,9 +197,9 @@ chmod +x build.sh
 
 | 版本 | 更新内容 |
 |------|----------|
+| v5.2.0.0 | 升级至 qBittorrent 5.2.0，自动获取最新 release<br>WebUI 改用 proxy 模式，解决跨域问题<br>智能代理策略：10s 超时自动切换备用代理 |
 | v5.1.4.3 | 修复了与系统下载进程冲突的问题<br>安装时需配置下载目录（必须已存在） |
 | v5.1.4.2 | 支持安装和应用设置中选择界面类型(VueTorrent/原生)<br>端口/UI修改可在应用设置中操作，请勿在WebUI中修改端口 |
-| v5.1.4.1 | 支持安装和应用设置中修改端口（请勿在WebUI中修改端口）<br>添加更新检测功能（VueTorrent界面自动检测GitHub最新版本）<br>默认以应用用户的身份运行 |
 
 ---
 

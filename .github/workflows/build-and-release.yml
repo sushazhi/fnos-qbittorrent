@@ -7,10 +7,6 @@ on:
     branches: [ main, develop, test ]
   workflow_dispatch:
     inputs:
-      qb_version:
-        description: 'qBittorrent version (e.g., 5.1.4)'
-        required: false
-        default: '5.1.4'
       vuetorrent_version:
         description: 'VueTorrent version (e.g., 2.31.3 or "latest")'
         required: false
@@ -20,7 +16,6 @@ permissions:
   contents: write
 
 env:
-  QB_VERSION: "5.1.4"
   VUETORRENT_VERSION: "latest"
 
 jobs:
@@ -39,16 +34,29 @@ jobs:
       - name: Read version from manifest
         run: |
           APP_VERSION=$(grep "^version\s*=" manifest | sed 's/version\s*=\s*//' | tr -d ' ')
+          QBT_VER=$(echo "$APP_VERSION" | cut -d. -f1-3)
           echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_ENV
+          echo "QBT_VER=${QBT_VER}" >> $GITHUB_ENV
           echo "APP_VERSION=${APP_VERSION}"
+          echo "QBT_VER=${QBT_VER}"
 
-      - name: Download qBittorrent ARM64 static binary from userdocs
+      - name: Fetch latest qBittorrent-nox release
+        run: |
+          QBT_API="https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
+          QBT_RELEASE_TAG=$(curl -fsSL "$QBT_API" | grep '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' | grep "^release-${QBT_VER}_v" | head -1)
+          if [ -z "$QBT_RELEASE_TAG" ]; then
+            echo "ERROR: No qBittorrent-nox release found for version ${QBT_VER}"
+            exit 1
+          fi
+          echo "QBT_RELEASE_TAG=${QBT_RELEASE_TAG}" >> $GITHUB_ENV
+          echo "qBittorrent-nox release: ${QBT_RELEASE_TAG}"
+
+      - name: Download qBittorrent ARM64 static binary
         run: |
           DOWNLOAD_ARCH="aarch64"
-          STATIC_RELEASE="release-5.1.4_v2.0.11"
-          STATIC_URL="https://github.com/userdocs/qbittorrent-nox-static/releases/download/${STATIC_RELEASE}/${DOWNLOAD_ARCH}-qbittorrent-nox"
+          STATIC_URL="https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBT_RELEASE_TAG}/${DOWNLOAD_ARCH}-qbittorrent-nox"
 
-          echo "Downloading qbittorrent-nox ${STATIC_RELEASE} for ${DOWNLOAD_ARCH}..."
+          echo "Downloading qbittorrent-nox ${QBT_RELEASE_TAG} for ${DOWNLOAD_ARCH}..."
           echo "URL: ${STATIC_URL}"
           wget -v "${STATIC_URL}" -O qbittorrent-nox
           chmod +x qbittorrent-nox
@@ -56,7 +64,6 @@ jobs:
           echo "Verifying binary..."
           file qbittorrent-nox
 
-          # Run on native ARM64 - no qemu needed
           echo "Checking binary version..."
           ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
 
@@ -274,7 +281,7 @@ jobs:
           **Architecture:** arm64
           **Platform:** arm
           **Build Type:** userdocs static (musl libc)
-          **qBittorrent Version:** ${{ env.QB_VERSION }}
+          **qBittorrent-nox Release:** ${{ env.QBT_RELEASE_TAG }}
           **VueTorrent Version:** ${{ env.VUETORRENT_VERSION }}
 
           **Git Info:**

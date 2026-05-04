@@ -1,5 +1,5 @@
 appname = qbittorrent
-version = 5.1.4.3
+version = 5.2.0.0
 display_name = qBittorrent
 desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🎨 <b>双UI选择：</b>安装或应用设置中可选VueTorrent(推荐)或qBittorrent原生界面<br><br>⚙️ <b>端口/UI修改：</b>可在<b>应用设置</b>中操作，<b>请勿在WebUI中修改端口</b>。<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
@@ -26,4 +26,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.1.4.3<br>更新日志<br>1. 修复了与系统下载进程冲突的问题<br>2. 安装时需配置下载目录（必须已存在）<br>
+changelog = v5.2.0.0<br>更新日志<br>1. 同步上游qbittorrent 5.2.0 libtorrent 2.0.12

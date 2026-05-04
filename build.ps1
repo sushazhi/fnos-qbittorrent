@@ -75,10 +75,32 @@ $VERSION_FILE = Join-Path $BUILD_DIR "versions.json"
 
 $FNPACK_URL = "https://static2.fnnas.com/fnpack/fnpack-1.2.1-windows-amd64"
 $VUE_TORRENT_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
-$QBT_VER = "5.1.4"
+$QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
+
+# Derive QBT_VER from manifest version (first 3 components)
+$verParts = $APP_VERSION -split '\.'
+$QBT_VER = ($verParts[0..2] -join '.')
+Write-Host "qBittorrent-nox version: $QBT_VER (from manifest $APP_VERSION)" -ForegroundColor Cyan
+
+# Get latest qBittorrent-nox release matching QBT_VER
+Write-Host "Fetching latest qBittorrent-nox release for $QBT_VER..." -ForegroundColor Cyan
+try {
+    $qbtReleases = Invoke-RestMethod -Uri $QBT_API -UseBasicParsing
+    $qbtPattern = "^release-${QBT_VER}_v"
+    $matchingRelease = $qbtReleases | Where-Object { $_.tag_name -match $qbtPattern } | Select-Object -First 1
+    if (-not $matchingRelease) {
+        Write-Host "ERROR: No qBittorrent-nox release found for version $QBT_VER" -ForegroundColor Red
+        exit 1
+    }
+    $QBT_RELEASE_TAG = $matchingRelease.tag_name
+    Write-Host "qBittorrent-nox release: $QBT_RELEASE_TAG" -ForegroundColor Cyan
+} catch {
+    Write-Host "ERROR: Failed to fetch qBittorrent-nox releases" -ForegroundColor Red
+    exit 1
+}
 
 # Proxy configuration
-$MAIN_PROXY = "https://hk.gh-proxy.org/"
+$MAIN_PROXY = "https://gh-proxy.org/"
 $BINARY_PROXY = "https://ghfast.top/"
 
 # Get latest VueTorrent version
@@ -137,25 +159,23 @@ function Get-File {
 
     Write-Host "  Downloading $Description..." -ForegroundColor Yellow
 
-    # Try main proxy first
+    # Try MAIN_PROXY first (10s timeout, no retry)
     $proxyUrl = $MAIN_PROXY + $Url
-    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
+    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "10", "--max-time", "10", "-s" -NoNewWindow -Wait -PassThru
     if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
         Write-Host "  Downloaded $Description (via $MAIN_PROXY)" -ForegroundColor Green
         Save-VersionInfo -Component $Component -Version $Version
         return $true
     }
 
-    # Try binary proxy for binary files
-    if ($UseBinaryProxy) {
-        Write-Host "  Trying backup proxy..." -ForegroundColor Yellow
-        $proxyUrl = $BINARY_PROXY + $Url
-        $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
-        if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
-            Write-Host "  Downloaded $Description (via $BINARY_PROXY)" -ForegroundColor Green
-            Save-VersionInfo -Component $Component -Version $Version
-            return $true
-        }
+    # MAIN_PROXY timed out, switch to BINARY_PROXY
+    Write-Host "  MAIN_PROXY timed out, switching to BINARY_PROXY..." -ForegroundColor Yellow
+    $proxyUrl = $BINARY_PROXY + $Url
+    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
+    if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
+        Write-Host "  Downloaded $Description (via $BINARY_PROXY)" -ForegroundColor Green
+        Save-VersionInfo -Component $Component -Version $Version
+        return $true
     }
 
     Write-Host "  ERROR: Failed to download $Description" -ForegroundColor Red
@@ -246,13 +266,9 @@ if ($ARCH -eq "arm64") {
     exit 1
 }
 
-$url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v2.0.11/${targetArch}-qbittorrent-nox"
-$success = Get-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
-if (-not $success) {
-    $url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/release-${QBT_VER}_v1.2.20/${targetArch}-qbittorrent-nox"
-    $success = Get-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_VER ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_VER -UseBinaryProxy $true
-    if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
-}
+$url = "https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBT_RELEASE_TAG}/${targetArch}-qbittorrent-nox"
+$success = Get-File -Url $url -OutFile $daemonCache -Description "qBittorrent-nox $QBT_RELEASE_TAG ($targetArch)" -Component "qbittorrent-nox_$ARCH" -Version $QBT_RELEASE_TAG -UseBinaryProxy $true
+if (-not $success) { Write-Host "  ERROR: Failed to download" -ForegroundColor Red; exit 1 }
 Copy-Item $daemonCache $daemonTarget -Force
 
 Write-Host "[4/5] Preparing VueTorrent WebUI..." -ForegroundColor Yellow
