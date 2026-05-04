@@ -104,6 +104,29 @@ if [ -f "$CONFIG_FILE" ]; then
 else
     echo "Creating new configuration file..."
 
+    # 尝试从残留配置中保留凭证（卸载后重装场景）
+    OLD_USER=""
+    OLD_PASS=""
+    for old_conf in "${DATA_DIR}/qBittorrent/config/qBittorrent.conf" \
+                     "/vol1/@appshare/qbittorrent/.data_backup/qBittorrent/config/qBittorrent.conf"; do
+        if [ -f "$old_conf" ]; then
+            OLD_USER=$(grep "^WebUI\\\\Username=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Username=//')
+            OLD_PASS=$(grep "^WebUI\\\\Password_PBKDF2=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Password_PBKDF2=//')
+            if [ -n "$OLD_USER" ] && [ -n "$OLD_PASS" ]; then
+                echo "保留已有凭证（用户名: $OLD_USER）"
+                break
+            fi
+            OLD_USER=""
+            OLD_PASS=""
+        fi
+    done
+
+    # 未找到旧凭证时使用默认值
+    if [ -z "$OLD_USER" ]; then
+        OLD_USER="admin"
+        OLD_PASS='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+    fi
+
     # 根据UI类型创建完整默认配置
     case "$UI_TYPE" in
         vuetorrent)
@@ -116,14 +139,13 @@ General\Locale=zh_CN
 WebUI\Address=*
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
-WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\Username=${OLD_USER}
+WebUI\Password_PBKDF2=${OLD_PASS}
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 CFGEOF
-
             echo "VueTorrent configured (iframe mode)"
             ;;
         native)
@@ -136,8 +158,8 @@ General\Locale=zh_CN
 WebUI\Address=*
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
-WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
+WebUI\Username=${OLD_USER}
+WebUI\Password_PBKDF2=${OLD_PASS}
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=false
