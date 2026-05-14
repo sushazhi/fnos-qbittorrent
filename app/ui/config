@@ -4,8 +4,20 @@
             "title": "qBittorrent",
             "icon": "images/icon_{0}.png",
             "type": "iframe",
-            "port": "${wizard_app_port}",
-            "url": "/",
+            "protocol": "",
+            "gatewaySocket": "qbittorrent.sock",
+            "gatewayPrefix": "/app/qbittorrent",
+            "url": "/app/qbittorrent/",
+            "allUsers": true
+        },
+        "qbittorrent.NativeUI": {
+            "title": "原生界面",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "",
+            "gatewaySocket": "qbittorrent.sock",
+            "gatewayPrefix": "/app/qbittorrent",
+            "url": "/app/qbittorrent/",
             "allUsers": true
         }
     }

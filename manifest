@@ -1,11 +1,11 @@
 appname = qbittorrent
 version = 5.2.0.1
 display_name = qBittorrent
-desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🎨 <b>双UI选择：</b>安装或应用设置中可选VueTorrent(推荐)或qBittorrent原生界面<br><br>⚙️ <b>端口/UI修改：</b>可在<b>应用设置</b>中操作，<b>请勿在WebUI中修改端口</b>。<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🎨 <b>双界面双图标：</b>桌面显示两个图标——"qBittorrent"在fnOS内打开VueTorrent | "原生界面"新标签页打开原生WebUI<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
 # 系统要求
 platform = all
-os_min_version = 1.1.19
+os_min_version = 1.1.31
 source = thirdparty
 
 # 开发者信息
@@ -17,13 +17,9 @@ distributor_url = https://github.com/sushazhi/fnos-qbittorrent
 # 安装控制
 ctl_stop = true
 
-# 端口配置
-service_port = ${wizard_app_port}
-checkport = true
-
 # 桌面图标配置
 desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.2.0.1<br>更新日志<br>1. 同步上游qbittorrent 5.2.0 libtorrent 2.0.12
+changelog = v5.2.0.1<br>1. 接入fnOS统一网关，VueTorrent通过iframe在fnOS内打开<br>2. 原生UI通过新标签页打开<br>3. Python反向代理自动剥离路径前缀并拦截API请求<br>4. 动态端口跟随（WebUI改端口后自动生效）<br>5. @appshare下下载目录自动创建<br>6. 同步上游qbittorrent 5.2.0 libtorrent 2.0.12

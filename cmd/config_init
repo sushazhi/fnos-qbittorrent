@@ -8,19 +8,9 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 
 echo "Reading current qBittorrent configuration..."
 
-# 默认值
-CURRENT_PORT="8080"
 CURRENT_UI_TYPE="vuetorrent"
 
-# 从配置文件读取当前值
 if [ -f "$CONFIG_FILE" ]; then
-    # 读取端口配置
-    PORT_FROM_CONFIG=$(grep -E "^WebUI\\\\Port=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
-    if [ -n "$PORT_FROM_CONFIG" ] && [ "$PORT_FROM_CONFIG" -gt 0 ] 2>/dev/null; then
-        CURRENT_PORT="$PORT_FROM_CONFIG"
-    fi
-
-    # 读取UI类型配置
     ALT_UI=$(grep -E "^WebUI\\\\AlternativeUIEnabled=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
     if [ "$ALT_UI" = "true" ]; then
         CURRENT_UI_TYPE="vuetorrent"
@@ -29,10 +19,7 @@ if [ -f "$CONFIG_FILE" ]; then
     fi
 fi
 
-# 输出当前配置值（供向导读取）
-# fnOS 会将这些值作为向导表单的初始值
-echo "wizard_app_port=${CURRENT_PORT}"
 echo "wizard_ui_type=${CURRENT_UI_TYPE}"
 
-echo "Current configuration: Port=${CURRENT_PORT}, UI=${CURRENT_UI_TYPE}"
+echo "Current configuration: UI=${CURRENT_UI_TYPE}"
 exit 0

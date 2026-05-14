@@ -4,11 +4,144 @@
 
 ## 目录
 
-1. [应用依赖关系](#应用依赖关系)
-2. [运行时环境](#运行时环境)
-3. [中间件服务](#中间件服务)
-4. [Docker 应用构建](#docker-应用构建)
-5. [Native 应用构建](#native-应用构建)
+1. [统一网关注册](#统一网关注册)
+2. [登录认证](#登录认证)
+3. [应用依赖关系](#应用依赖关系)
+4. [运行时环境](#运行时环境)
+5. [中间件服务](#中间件服务)
+6. [Docker 应用构建](#docker-应用构建)
+7. [Native 应用构建](#native-应用构建)
+
+---
+
+## 统一网关注册
+
+统一网关为应用提供稳定的访问入口，应用接入后无需新增端口监听，用户可通过系统地址和应用路径访问服务。
+
+> **系统要求**：fnOS V1.1.31 及以上版本
+
+例如系统WebUI地址为 `http://192.168.1.10:5666/`，则应用访问地址为 `http://192.168.1.10:5666/app/{appname}`
+
+> 统一网关会在转发请求前完成登录态校验，自动拒绝非法访问。HTTP 和 WebSocket 请求均可通过统一网关接入。
+
+### 接入方式
+
+在 `app/ui/config` 中声明 `gatewayPrefix` 和 `gatewaySocket` 即可接入：
+
+- `gatewayPrefix` 不为空且符合格式规范
+- `gatewaySocket` 不为空
+
+### 字段说明
+
+- **`gatewayPrefix`** - 应用注册到网关的访问前缀
+  - 格式：`/app/{appname}/{customPath}` 或 `/app/{appname}`
+  - `{appname}` 为应用包名
+  - `{customPath}` 为自定义路径（非必须）
+  - 不应包含 `.`，如有请用 `-` 替换
+
+- **`gatewaySocket`** - 应用接收网关请求的 Socket 文件名
+  - 只填文件名，如 `app.sock`
+  - 不填完整路径
+  - Socket 文件应放在应用 `target` 目录下，路径可通过 `${TRIM_APPDEST}` 获取
+
+### 配置示例
+
+```json
+{
+    ".url": {
+        "qbittorrent.Application": {
+            "title": "qBittorrent",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "",
+            "gatewaySocket": "qbittorrent.sock",
+            "gatewayPrefix": "/app/qbittorrent",
+            "url": "/app/qbittorrent/",
+            "allUsers": true
+        }
+    }
+}
+```
+
+以上配置注册访问入口 `/app/qbittorrent`，匹配该前缀的请求转发到 `/var/apps/qbittorrent/target/qbittorrent.sock`
+
+### WebSocket 使用说明
+
+WebSocket 可复用同一个 `gatewayPrefix` 和 `gatewaySocket`，网关会将匹配前缀的 WebSocket Upgrade 请求转发到应用 Socket。
+
+前端连接示例：
+
+```javascript
+const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+const wsUrl = `${wsProtocol}//${window.location.host}/app/qbittorrent/ws`;
+const socket = new WebSocket(wsUrl);
+```
+
+### 应用侧要求
+
+- 应用应监听 `gatewaySocket` 对应的 Unix Socket
+- WebSocket 路由建议固定为网关前缀下的子路径，如 `/ws`
+- 不要使用客户端传入的用户 ID 判断身份，应使用 `X-Trim-*` Header
+
+---
+
+## 登录认证
+
+应用通过统一网关注册后，网关会校验用户登录态，并将当前用户信息透传给应用。
+
+> **系统要求**：fnOS V1.1.31 及以上版本
+
+### 认证规则
+
+默认情况下，经过统一网关的请求需携带有效的系统登录态。认证通过后请求才转发到应用，认证失败不进入应用服务。
+
+> 统一网关只能确认用户已登录，应用仍需根据业务规则判断用户是否有权限访问具体数据或执行操作。
+
+### 用户信息 Header
+
+认证通过后，网关在转发请求中增加以下 Header：
+
+| Header | 说明 | 示例 |
+|--------|------|------|
+| `X-Trim-Uid` | 当前登录用户的 UID | 1000 |
+| `X-Trim-Isadmin` | 当前用户是否为管理员 | true/false |
+| `X-Trim-Username` | 当前登录用户名 | admin |
+
+应用可使用这些 Header 识别当前用户。
+
+### 应用侧示例
+
+Python 示例：
+
+```python
+def get_gateway_user(environ):
+    return {
+        'uid': environ.get('HTTP_X_TRIM_UID'),
+        'is_admin': environ.get('HTTP_X_TRIM_ISADMIN') == 'true',
+        'username': environ.get('HTTP_X_TRIM_USERNAME')
+    }
+```
+
+### 权限判断
+
+应用应保留自己的权限判断逻辑，常见场景：
+
+- 用户数据隔离：对应用户的请求只能访问自己的数据
+- 管理接口：仅管理员可访问
+- 高风险操作：需单独校验权限
+
+### WebSocket
+
+WebSocket 也通过统一网关访问。连接建立时网关校验登录态并透传用户信息。应用应将连接与 `X-Trim-Uid` 绑定，不信任客户端主动上报的用户 ID。
+
+### 不鉴权接口
+
+公开资源、OAuth 回调等不需要登录态的接口应单独设计路径，保持最小暴露范围：
+
+- 只开放必要路径
+- 只允许必要 HTTP 方法
+- 不返回用户敏感信息
+- 不提供写入、删除等高风险能力
 
 ---
 

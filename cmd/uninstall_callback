@@ -7,6 +7,8 @@ echo "正在清理 qBittorrent..."
 
 # 清理临时文件
 rm -f "${TRIM_PKGTMP}/qbittorrent.pid"
+rm -f "${TRIM_PKGTMP}/qbittorrent-proxy.pid"
+rm -f "${TRIM_APPDEST}/qbittorrent.sock"
 
 echo "qBittorrent 清理完成"
 exit 0

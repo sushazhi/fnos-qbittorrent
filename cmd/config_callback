@@ -1,6 +1,5 @@
 #!/bin/bash
 # cmd/config_callback - qBittorrent配置回调脚本
-# 功能：应用配置变更，更新端口设置和UI类型并重启服务
 
 set -u
 
@@ -10,38 +9,13 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.lock"
 MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
-
-is_valid_port() {
-    local port="$1"
-    [[ "$port" =~ ^[0-9]+$ ]] || return 1
-    [ "$port" -ge 1 ] && [ "$port" -le 65535 ]
-}
-
-is_port_in_use() {
-    local port="$1"
-    if command -v ss >/dev/null 2>&1; then
-        ss -lnt "( sport = :$port )" | awk 'NR>1 {found=1} END {exit !found}'
-    else
-        return 1
-    fi
-}
+UI_CONFIG="${TRIM_APPDEST}/ui/config"
 
 echo "正在应用 qBittorrent 配置..."
 
-# 获取端口配置（从向导传递）
-NEW_PORT="${wizard_app_port:-8080}"
-echo "配置端口: $NEW_PORT"
-
-if ! is_valid_port "$NEW_PORT"; then
-    echo "错误：端口号（$NEW_PORT）无效，请输入 1-65535 之间的整数" >&2
-    exit 1
-fi
-
-# 获取UI类型配置（从向导传递）
 UI_TYPE="${wizard_ui_type:-vuetorrent}"
 echo "界面类型: $UI_TYPE"
 
-# 根据UI类型设置对应的mode
 case "$UI_TYPE" in
     vuetorrent)
         ALT_UI_ENABLED="true"
@@ -54,8 +28,9 @@ case "$UI_TYPE" in
         ALT_UI_ENABLED="true"
         ;;
 esac
+WEBUI_ADDRESS="127.0.0.1"
+LOCALHOST_AUTH="true"
 
-# 检查应用是否正在运行
 WAS_RUNNING=false
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE" 2>/dev/null)
@@ -71,50 +46,40 @@ else
     echo "应用当前处于停止状态"
 fi
 
-# 停止后再检查端口占用，避免误判当前应用自己占用
-if is_port_in_use "$NEW_PORT"; then
-    echo "错误：端口号（$NEW_PORT）已被其他服务占用，请修改后重试" >&2
-    exit 1
-fi
-
-# 更新qBittorrent配置文件
 if [ -f "$CONFIG_FILE" ]; then
     echo "更新qBittorrent配置文件..."
 
-    # 获取文件锁，防止并发写入
     exec 200>"$LOCK_FILE"
     flock -w 10 200 || {
-        echo "错误：无法获取配置文件锁，可能有其他进程正在操作" >&2
+        echo "错误：无法获取配置文件锁" >&2
         exit 1
     }
 
     TMP_CONFIG=$(mktemp)
-    awk -v port="${NEW_PORT}" -v alt_ui="${ALT_UI_ENABLED}" '
-        BEGIN { in_preferences = 0; port_written = 0; alt_written = 0; }
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" '
+        BEGIN { in_preferences = 0; alt_written = 0; addr_written = 0; lha_written = 0; }
         {
             if ($0 ~ /^\[/) {
                 if (in_preferences) {
-                    if (!port_written) print "WebUI\\Port=" port
                     if (!alt_written) print "WebUI\\AlternativeUIEnabled=" alt_ui
+                    if (!addr_written) print "WebUI\\Address=" addr
+                    if (!lha_written) print "WebUI\\LocalHostAuth=" lha
                 }
                 in_preferences = ($0 == "[Preferences]")
                 print $0
                 next
             }
 
-            if (in_preferences && $0 ~ /^WebUI\\Port=/) {
-                if (!port_written) {
-                    print "WebUI\\Port=" port
-                    port_written = 1
-                }
+            if (in_preferences && $0 ~ /^WebUI\\AlternativeUIEnabled=/) {
+                if (!alt_written) { print "WebUI\\AlternativeUIEnabled=" alt_ui; alt_written = 1; }
                 next
             }
-
-            if (in_preferences && $0 ~ /^WebUI\\AlternativeUIEnabled=/) {
-                if (!alt_written) {
-                    print "WebUI\\AlternativeUIEnabled=" alt_ui
-                    alt_written = 1
-                }
+            if (in_preferences && $0 ~ /^WebUI\\Address=/) {
+                if (!addr_written) { print "WebUI\\Address=" addr; addr_written = 1; }
+                next
+            }
+            if (in_preferences && $0 ~ /^WebUI\\LocalHostAuth=/) {
+                if (!lha_written) { print "WebUI\\LocalHostAuth=" lha; lha_written = 1; }
                 next
             }
 
@@ -122,31 +87,26 @@ if [ -f "$CONFIG_FILE" ]; then
         }
         END {
             if (in_preferences) {
-                if (!port_written) print "WebUI\\Port=" port
                 if (!alt_written) print "WebUI\\AlternativeUIEnabled=" alt_ui
-            } else {
-                print "[Preferences]"
-                print "WebUI\\Port=" port
-                print "WebUI\\AlternativeUIEnabled=" alt_ui
+                if (!addr_written) print "WebUI\\Address=" addr
+                if (!lha_written) print "WebUI\\LocalHostAuth=" lha
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
 
     mv "$TMP_CONFIG" "$CONFIG_FILE"
-
     flock -u 200
     echo "qBittorrent配置文件已更新"
 else
     echo "警告：配置文件不存在，将在首次启动时创建"
 fi
 
-# 根据之前的状态决定是否重启
 if [ "$WAS_RUNNING" = true ]; then
     echo "应用之前在运行，正在重启..."
     "$MAIN_SCRIPT" start
     echo "qBittorrent 配置已应用，服务已重启"
 else
-    echo "应用之前处于停止状态，配置已应用，不会自动启动"
+    echo "应用之前处于停止状态，配置已应用"
 fi
 
 exit 0

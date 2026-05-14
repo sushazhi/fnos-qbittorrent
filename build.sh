@@ -258,6 +258,10 @@ url="https://github.com/userdocs/qbittorrent-nox-static/releases/download/${QBT_
 download_file "$url" "$daemon_cache" "qBittorrent-nox ${QBT_RELEASE_TAG} (${binary_arch})" "qbittorrent-nox_${ARCH}" "$QBT_RELEASE_TAG" || exit 1
 cp "$daemon_cache" "$daemon_target"
 
+if [ -f "${PROJECT_DIR}/app/bin/gateway-proxy.py" ]; then
+    cp "${PROJECT_DIR}/app/bin/gateway-proxy.py" "${BUILD_DIR}/app/bin/"
+fi
+
 # [4/5] Preparing VueTorrent WebUI
 echo -e "${YELLOW}[4/5] Preparing VueTorrent WebUI...${NC}"
 vue_cache="${BUILD_DIR}/vuetorrent.zip"

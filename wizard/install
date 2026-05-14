@@ -16,27 +16,11 @@
       },
       {
         "type": "tips",
-        "helpText": "⚙️ <b>端口/UI修改：</b>请在<b>应用设置</b>中修改，<b>请勿在WebUI中修改</b>"
+        "helpText": "🌐 <b>统一网关：</b>通过 fnOS 系统地址访问，无需配置端口"
       },
       {
         "type": "tips",
         "helpText": "🐛 <b>问题反馈：</b><a href='https://github.com/sushazhi/fnos-qbittorrent/issues' target='_blank'>GitHub Issues</a>"
-      },
-      {
-        "type": "text",
-        "field": "wizard_app_port",
-        "label": "应用端口",
-        "initValue": "8080",
-        "rules": [
-          {
-            "required": true,
-            "message": "请输入端口号"
-          },
-          {
-            "pattern": "^[0-9]+$",
-            "message": "端口号必须是数字"
-          }
-        ]
       }
     ]
   },
@@ -49,7 +33,7 @@
       },
       {
         "type": "tips",
-        "helpText": "⚠️ <b>目录必须已存在（否则会导致安装失败）</b>，请先在文件管理中创建"
+        "helpText": "⚠️ <b>@appshare 下的目录会在启动时自动创建</b>；其他路径需先在文件管理中创建"
       },
       {
         "type": "tips",
@@ -78,11 +62,11 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行<br>✓ 可自动检测新版本"
+        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行（网关模式）<br>✓ 可自动检测新版本"
       },
       {
         "type": "tips",
-        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 更改设置需要在新标签页打开<br>✗ 无法检测新版本"
+        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需在新标签页中打开 http://NAS_IP:8080<br>✗ 无法检测新版本"
       },
       {
         "type": "radio",

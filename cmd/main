@@ -6,40 +6,97 @@ BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
+PROXY_PID_FILE="${TRIM_PKGTMP}/${APP_NAME}-proxy.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
-# 日志轮转配置
-LOG_MAX_SIZE=1048576  # 1MB
-LOG_MAX_FILES=3        # 保留3个旧日志文件
+PROXY_SCRIPT="${BIN_DIR}/gateway-proxy.py"
+GATEWAY_SOCK="${TRIM_APPDEST}/qbittorrent.sock"
 
-# 端口配置
-WEBUI_PORT="${wizard_app_port:-${TRIM_SERVICE_PORT:-8080}}"
+LOG_MAX_SIZE=1048576
+LOG_MAX_FILES=3
 
-# 日志轮转函数
+WEBUI_PORT="8080"
+
 rotate_logs() {
     if [ -f "$LOG_FILE" ]; then
         LOG_SIZE=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
         if [ "$LOG_SIZE" -gt "$LOG_MAX_SIZE" ]; then
-            # 删除最旧的日志
             if [ -f "${LOG_FILE}.${LOG_MAX_FILES}" ]; then
                 rm -f "${LOG_FILE}.${LOG_MAX_FILES}"
             fi
-            # 轮转现有日志文件
             for i in $(seq $((LOG_MAX_FILES - 1)) -1 1); do
                 if [ -f "${LOG_FILE}.${i}" ]; then
                     mv "${LOG_FILE}.${i}" "${LOG_FILE}.$((i + 1))"
                 fi
             done
-            # 移动当前日志
             mv "$LOG_FILE" "${LOG_FILE}.1"
             echo "$(date '+%Y-%m-%d %H:%M:%S') - Log rotated" > "$LOG_FILE"
         fi
     fi
 }
 
+read_qbt_port() {
+    if [ -f "$CONFIG_FILE" ]; then
+        PORT_FROM_CONFIG=$(grep -E "^WebUI\\\\Port=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
+        if [ -n "$PORT_FROM_CONFIG" ] && [ "$PORT_FROM_CONFIG" -gt 0 ] 2>/dev/null; then
+            WEBUI_PORT="$PORT_FROM_CONFIG"
+        fi
+    fi
+}
+
+start_proxy() {
+    if [ -f "$PROXY_PID_FILE" ]; then
+        local PROXY_PID=$(cat "$PROXY_PID_FILE")
+        if kill -0 "$PROXY_PID" 2>/dev/null; then
+            echo "proxy is already running (PID: $PROXY_PID)"
+            return 0
+        fi
+        rm -f "$PROXY_PID_FILE"
+    fi
+
+    rm -f "$GATEWAY_SOCK"
+    read_qbt_port
+
+    if [ ! -f "$PROXY_SCRIPT" ]; then
+        echo "Warning: proxy script not found at $PROXY_SCRIPT, gateway proxy unavailable"
+        return 1
+    fi
+
+    python3 "$PROXY_SCRIPT" "$GATEWAY_SOCK" 127.0.0.1 "$WEBUI_PORT" "$CONFIG_FILE" >> "$LOG_FILE" 2>&1 &
+
+    PROXY_PID=$!
+    echo $PROXY_PID > "$PROXY_PID_FILE"
+    sleep 1
+
+    if kill -0 "$PROXY_PID" 2>/dev/null && [ -S "$GATEWAY_SOCK" ]; then
+        echo "proxy started (PID: $PROXY_PID), gateway: ${GATEWAY_SOCK} -> 127.0.0.1:${WEBUI_PORT}"
+        return 0
+    fi
+
+    echo "Warning: proxy failed to start, gateway proxy unavailable"
+    rm -f "$PROXY_PID_FILE"
+    rm -f "$GATEWAY_SOCK"
+    return 1
+}
+
+stop_proxy() {
+    if [ -f "$PROXY_PID_FILE" ]; then
+        local PROXY_PID=$(cat "$PROXY_PID_FILE" 2>/dev/null)
+        if kill -0 "$PROXY_PID" 2>/dev/null; then
+            kill "$PROXY_PID" 2>/dev/null || true
+            sleep 1
+            if kill -0 "$PROXY_PID" 2>/dev/null; then
+                kill -9 "$PROXY_PID" 2>/dev/null || true
+            fi
+        fi
+        rm -f "$PROXY_PID_FILE"
+    fi
+    rm -f "$GATEWAY_SOCK"
+    echo "proxy stopped"
+}
+
 case "$1" in
 start)
-    # 检查是否已运行（通过PID文件）
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
@@ -49,45 +106,21 @@ start)
         rm -f "$PID_FILE"
     fi
 
-    # 检查系统中是否存在其他 qbittorrent-nox 进程（可能是飞牛下载等）
     EXISTING_PID=$(pgrep -f "qbittorrent-nox" 2>/dev/null | head -1)
     if [ -n "$EXISTING_PID" ]; then
-        # 检查是否是本应用的进程
         EXISTING_CMD=$(ps -p "$EXISTING_PID" -o args= 2>/dev/null)
         if echo "$EXISTING_CMD" | grep -q "profile.*${DATA_DIR}"; then
-            # 是本应用的进程，但PID文件丢失，尝试恢复
             echo $EXISTING_PID > "$PID_FILE"
             echo "${APP_NAME} is already running (PID: $EXISTING_PID, recovered)"
             exit 0
         fi
-        # 其他应用的进程（如飞牛下载 trim-qbittorrent），仅记录日志，不阻止启动
         echo "提示：检测到其他 qBittorrent 进程正在运行 (PID: $EXISTING_PID)，继续启动本应用"
     fi
 
-    # 创建必要的目录
     mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config"
 
-    # 日志轮转
     rotate_logs
 
-    # 启动前端口预检测
-    if command -v ss >/dev/null 2>&1; then
-        PORT_CHECK=$(ss -tln 2>/dev/null | grep -c ":${WEBUI_PORT} " || true)
-    elif command -v netstat >/dev/null 2>&1; then
-        PORT_CHECK=$(netstat -tln 2>/dev/null | grep -c ":${WEBUI_PORT} " || true)
-    else
-        PORT_CHECK=0
-    fi
-    if [ "$PORT_CHECK" -gt 0 ]; then
-        echo "错误：端口 ${WEBUI_PORT} 已被占用，请更换端口后重试" > "$TRIM_TEMP_LOGFILE"
-        echo "可在应用设置中修改端口号" >> "$TRIM_TEMP_LOGFILE"
-        exit 1
-    fi
-
-    # 设置环境变量
-    export QT_QPA_PLATFORM=offscreen
-
-    # 检查可执行文件
     if [ ! -f "$BIN_DIR/qbittorrent-nox" ]; then
         echo "错误：未找到可执行文件 qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
         exit 1
@@ -96,7 +129,6 @@ start)
         chmod +x "$BIN_DIR/qbittorrent-nox"
     fi
 
-    # 只在配置文件不存在时创建默认配置
     if [ ! -f "$CONFIG_FILE" ]; then
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
@@ -104,7 +136,7 @@ Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
 Session\TempPath=/vol1/@appshare/qbittorrent/temp/
 [Preferences]
 General\Locale=zh_CN
-WebUI\Address=*
+WebUI\Address=127.0.0.1
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=true
 WebUI\Username=admin
@@ -116,22 +148,28 @@ WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
     fi
 
-    # 检查下载目录权限（兼容新旧配置格式）
     SAVE_PATH=$(grep -E "(Session\\\\DefaultSavePath|Downloads\\\\SavePath)=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)
     if [ -n "$SAVE_PATH" ]; then
         if [ ! -d "$SAVE_PATH" ]; then
-            echo "错误：下载目录（$SAVE_PATH）不存在" > "$TRIM_TEMP_LOGFILE"
-            echo "请在 fnOS 文件管理中创建该目录后重试" >> "$TRIM_TEMP_LOGFILE"
-            exit 1
-        fi
-        if [ ! -r "$SAVE_PATH" ] || [ ! -w "$SAVE_PATH" ]; then
-            echo "错误：下载目录（$SAVE_PATH）没有读写权限" > "$TRIM_TEMP_LOGFILE"
-            echo "请前往 NAS【系统设置 - 应用 - qBittorrent】设置允许访问的文件夹" >> "$TRIM_TEMP_LOGFILE"
-            exit 1
+            if echo "$SAVE_PATH" | grep -qE '^/vol[0-9]+/@appshare/'; then
+                mkdir -p "$SAVE_PATH" 2>/dev/null && echo "已创建下载目录：$SAVE_PATH" >> "$LOG_FILE" || echo "警告：无法创建下载目录（$SAVE_PATH），请前往【系统设置 - 应用 - qBittorrent】设置允许访问的文件夹" >> "$LOG_FILE"
+            else
+                echo "警告：下载目录（$SAVE_PATH）不存在，请在 fnOS 文件管理中创建" >> "$LOG_FILE"
+            fi
+        elif [ ! -r "$SAVE_PATH" ] || [ ! -w "$SAVE_PATH" ]; then
+            echo "警告：下载目录（$SAVE_PATH）没有读写权限，请前往【系统设置 - 应用 - qBittorrent】设置允许访问的文件夹" >> "$LOG_FILE"
         fi
     fi
 
-    # 启动qBittorrent-nox
+    TEMP_PATH=$(grep -E "^Session\\\\TempPath=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)
+    if [ -n "$TEMP_PATH" ] && [ ! -d "$TEMP_PATH" ]; then
+        if echo "$TEMP_PATH" | grep -qE '^/vol[0-9]+/@appshare/'; then
+            mkdir -p "$TEMP_PATH" 2>/dev/null || true
+        fi
+    fi
+
+    export QT_QPA_PLATFORM=offscreen
+
     echo "Starting qBittorrent..."
     "$BIN_DIR/qbittorrent-nox" \
         --confirm-legal-notice \
@@ -143,14 +181,10 @@ EOF
     echo $PID > "$PID_FILE"
 
     sleep 3
-    if ps -p "$PID" > /dev/null 2>&1; then
-        echo "${APP_NAME} started (PID: $PID)"
-        exit 0
-    else
-        # 检查是否是端口占用问题
+    if ! ps -p "$PID" > /dev/null 2>&1; then
         if [ -f "$LOG_FILE" ]; then
             if grep -qi "port.*already\|bind.*failed\|address.*in.*use" "$LOG_FILE" 2>/dev/null; then
-                echo "错误：端口 ${WEBUI_PORT} 被其他程序占用，请更换端口后重试" > "$TRIM_TEMP_LOGFILE"
+                echo "错误：端口 ${WEBUI_PORT} 被其他程序占用" > "$TRIM_TEMP_LOGFILE"
                 rm -f "$PID_FILE"
                 exit 1
             fi
@@ -162,16 +196,22 @@ EOF
         rm -f "$PID_FILE"
         exit 1
     fi
+
+    echo "${APP_NAME} started (PID: $PID)"
+
+    start_proxy
+
+    exit 0
     ;;
 
 stop)
-    # 查找本应用的进程
+    stop_proxy
+
     PID=""
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE" 2>/dev/null)
     fi
     if [ -z "$PID" ] || ! ps -p "$PID" > /dev/null 2>&1; then
-        # 通过 profile 路径精确匹配本应用的进程
         PID=$(pgrep -f "qbittorrent-nox.*--profile.*${DATA_DIR}" 2>/dev/null | head -1)
     fi
 
@@ -213,7 +253,6 @@ status)
         fi
     fi
     if [ "$RUNNING" = false ]; then
-        # 通过 profile 路径精确匹配本应用的进程
         PID=$(pgrep -f "qbittorrent-nox.*--profile.*${DATA_DIR}" 2>/dev/null | head -1)
         if [ -n "$PID" ]; then
             RUNNING=true

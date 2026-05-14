@@ -27,6 +27,8 @@
 **适合人群**: 有一定经验的开发者
 
 **主要内容**:
+- ✅ 统一网关注册（gatewayPrefix/gatewaySocket）
+- ✅ 登录认证（X-Trim-* Header）
 - ✅ 应用依赖关系管理
 - ✅ 运行时环境配置 (Python, Node.js, Java)
 - ✅ 中间件服务集成 (Redis, MinIO, RabbitMQ)
@@ -135,6 +137,8 @@
 | 向导界面 | Developer Guide | 向导界面 |
 | 环境变量 | Developer Guide | 环境变量 |
 | 数据共享路径 | Developer Guide | 环境变量 → TRIM_DATA_SHARE_PATHS |
+| 统一网关 | Advanced Guide | 统一网关注册 |
+| 登录认证 | Advanced Guide | 登录认证 |
 | 依赖管理 | Advanced Guide | 应用依赖关系 |
 | 运行时环境 | Advanced Guide | 运行时环境 |
 | 中间件服务 | Advanced Guide | 中间件服务 |
@@ -152,6 +156,8 @@
 | 我要了解应用结构 | Developer Guide → 应用结构 |
 | 我要配置安装向导 | Developer Guide → 向导界面 |
 | 我要使用 Python | Advanced Guide → 运行时环境 |
+| 我要接入统一网关 | Advanced Guide → 统一网关注册 |
+| 我要获取登录用户信息 | Advanced Guide → 登录认证 |
 | 我要使用 Redis | Advanced Guide → 中间件服务 |
 | 我要开发 Docker 应用 | Advanced Guide → Docker 应用构建 |
 | 我要设计图标 | Tools Guide → 图标 Icon 设计规范 |
@@ -211,6 +217,8 @@
 
 | 文档 | URL |
 |------|-----|
+| 统一网关注册 | https://developer.fnnas.com/docs/core-concepts/gateway-registration |
+| 登录认证 | https://developer.fnnas.com/docs/core-concepts/gateway-authentication |
 | 应用依赖关系 | https://developer.fnnas.com/docs/core-concepts/dependency |
 | 运行时环境 | https://developer.fnnas.com/docs/core-concepts/runtime |
 | 中间件服务 | https://developer.fnnas.com/docs/core-concepts/middleware |

@@ -92,7 +92,7 @@ if [ "$DATA_ACTION" = "delete" ]; then
         echo "Data directory removed: $DATA_DIR"
     fi
     # 清理可能存在的备份
-    rm -rf "${BACKUP_BASE_DIR}" 2>/dev/null || true
+    rm -rf "$BACKUP_DIR" 2>/dev/null || true
 else
     # 用户选择保留数据 - 主动备份到持久化目录以防被fnOS清理
     echo "User chose to keep data, backing up to persistent location..."
