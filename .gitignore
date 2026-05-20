@@ -9,6 +9,9 @@ build/
 dist/
 out/
 bin/
+!app/bin/
+/app/bin/qbittorrent-nox
+/app/bin/__pycache__/
 obj/
 lib/
 
