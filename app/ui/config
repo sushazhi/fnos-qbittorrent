@@ -7,7 +7,7 @@
             "protocol": "",
             "gatewaySocket": "qbittorrent.sock",
             "gatewayPrefix": "/app/qbittorrent",
-            "url": "/app/qbittorrent/",
+            "url": "/app/qbittorrent",
             "allUsers": true
         },
         "qbittorrent.NativeUI": {
@@ -17,7 +17,7 @@
             "protocol": "",
             "gatewaySocket": "qbittorrent.sock",
             "gatewayPrefix": "/app/qbittorrent",
-            "url": "/app/qbittorrent/",
+            "url": "/app/qbittorrent",
             "allUsers": true
         }
     }
