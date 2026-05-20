@@ -114,22 +114,29 @@ jobs:
           fi
 
           VUE_INDEX="app/ui/vuetorrent/public/index.html"
+          ARCH="${{ matrix.arch }}"
           if [ -f "$VUE_INDEX" ]; then
             if grep -q "QBITTORRENT_APP_VERSION" "$VUE_INDEX"; then
               sed -i "s/window\.QBITTORRENT_APP_VERSION = '[^']*'/window.QBITTORRENT_APP_VERSION = '$APP_VERSION'/g" "$VUE_INDEX"
-              echo "Update check version updated to $APP_VERSION"
+              if grep -q "QBITTORRENT_APP_ARCH" "$VUE_INDEX"; then
+                sed -i "s/window\.QBITTORRENT_APP_ARCH = '[^']*'/window.QBITTORRENT_APP_ARCH = '$ARCH'/g" "$VUE_INDEX"
+              else
+                sed -i "/window\.QBITTORRENT_APP_VERSION = '[^']*'/a\\          window.QBITTORRENT_APP_ARCH = '$ARCH'" "$VUE_INDEX"
+              fi
+              echo "Update check version/arch updated to $APP_VERSION/$ARCH"
             else
-              awk -v ver="$APP_VERSION" '
+              awk -v ver="$APP_VERSION" -v arch="$ARCH" '
                 /<\/body>/ {
                   print "      <script>"
                   print "          window.QBITTORRENT_APP_VERSION = '\''" ver "'\'';"
+                  print "          window.QBITTORRENT_APP_ARCH = '\''" arch "'\'';"
                   print "      </script>"
                   print "      <script src=\"update-check.js\"></script>"
                   print ""
                 }
                 { print }
               ' "$VUE_INDEX" > "$VUE_INDEX.tmp" && mv "$VUE_INDEX.tmp" "$VUE_INDEX"
-              echo "Update check injected into VueTorrent"
+              echo "Update check injected into VueTorrent ($APP_VERSION/$ARCH)"
             fi
           else
             echo "ERROR: VueTorrent index.html not found"

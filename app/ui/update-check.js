@@ -15,6 +15,7 @@
 
   const CONFIG = {
     currentVersion: window.QBITTORRENT_APP_VERSION || '5.1.4',
+    currentArch: window.QBITTORRENT_APP_ARCH || 'amd64',
     repoOwner: 'sushazhi',
     repoName: 'fnos-qbittorrent'
   };
@@ -127,7 +128,7 @@
             </div>
           </div>
           <div class="update-notification-version">
-            当前: v${CONFIG.currentVersion} → 最新: v${updateInfo.latestVersion}
+            当前: v${CONFIG.currentVersion} → 最新: v${updateInfo.latestVersion} (${CONFIG.currentArch})
           </div>
           ${hasChangelog ? `<div class="update-notification-changelog">${changelogHtml}${updateInfo.changelog && updateInfo.changelog.length > 500 ? '...' : ''}</div>` : ''}
         </div>
@@ -415,8 +416,19 @@
     log('显示更新通知: v' + updateInfo.latestVersion);
   }
 
+  function findMatchingAsset(assets, arch) {
+    if (!assets || !assets.length) return null;
+    const archSuffix = '-' + arch + '.fpk';
+    for (var i = 0; i < assets.length; i++) {
+      if (assets[i].name && assets[i].name.indexOf(archSuffix) !== -1) {
+        return assets[i];
+      }
+    }
+    return null;
+  }
+
   async function checkUpdate() {
-    log('开始检查更新... 当前版本: ' + CONFIG.currentVersion);
+    log('开始检查更新... 当前版本: ' + CONFIG.currentVersion + ', 架构: ' + CONFIG.currentArch);
 
     // 直接检查 GitHub
     const apiUrl = `https://api.github.com/repos/${CONFIG.repoOwner}/${CONFIG.repoName}/releases/latest`;
@@ -437,12 +449,19 @@
       const hasUpdate = compareVersions(CONFIG.currentVersion, latestVersion) > 0;
 
       if (hasUpdate) {
-        log('发现新版本，显示通知');
-        showUpdateNotification({
-          latestVersion,
-          releaseUrl: data.html_url || '',
-          changelog: data.body || ''
-        });
+        // 查找匹配当前架构的资产
+        const matchingAsset = findMatchingAsset(data.assets, CONFIG.currentArch);
+
+        if (matchingAsset) {
+          log('发现新版本，架构匹配: ' + CONFIG.currentArch);
+          showUpdateNotification({
+            latestVersion: latestVersion,
+            releaseUrl: matchingAsset.browser_download_url || data.html_url || '',
+            changelog: data.body || ''
+          });
+        } else {
+          log('新版本无当前架构(' + CONFIG.currentArch + ')的更新包，跳过通知');
+        }
       } else {
         log('当前是最新版本');
       }

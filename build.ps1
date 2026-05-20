@@ -320,6 +320,7 @@ Write-Host "[4.5/5] Injecting update check into WebUIs..." -ForegroundColor Yell
 $injectScript = @"
     <script>
         window.QBITTORRENT_APP_VERSION = '$APP_VERSION';
+        window.QBITTORRENT_APP_ARCH = '$ARCH';
     </script>
     <script src="update-check.js"></script>
 "@
@@ -331,12 +332,18 @@ if (Test-Path $vueIndexHtml) {
     # Update version if already exists, or inject new
     if ($vueContent -match "window\.QBITTORRENT_APP_VERSION\s*=\s*'[^']*'") {
         $vueContent = $vueContent -replace "window\.QBITTORRENT_APP_VERSION\s*=\s*'[^']*'", "window.QBITTORRENT_APP_VERSION = '$APP_VERSION'"
+        # Also update or add arch
+        if ($vueContent -match "window\.QBITTORRENT_APP_ARCH\s*=\s*'[^']*'") {
+            $vueContent = $vueContent -replace "window\.QBITTORRENT_APP_ARCH\s*=\s*'[^']*'", "window.QBITTORRENT_APP_ARCH = '$ARCH'"
+        } else {
+            $vueContent = $vueContent -replace "(window\.QBITTORRENT_APP_VERSION\s*=\s*'[^']*')", "`$1`n        window.QBITTORRENT_APP_ARCH = '$ARCH'"
+        }
         $vueContent | Set-Content $vueIndexHtml -NoNewline -Encoding UTF8
-        Write-Host "  Update check version updated to $APP_VERSION" -ForegroundColor Green
+        Write-Host "  Update check version/arch updated to $APP_VERSION/$ARCH" -ForegroundColor Green
     } elseif ($vueContent -match '</body>') {
         $vueContent = $vueContent -replace '</body>', "$injectScript`n</body>"
         $vueContent | Set-Content $vueIndexHtml -NoNewline -Encoding UTF8
-        Write-Host "  Update check injected into VueTorrent" -ForegroundColor Green
+        Write-Host "  Update check injected into VueTorrent ($APP_VERSION/$ARCH)" -ForegroundColor Green
     } else {
         Write-Host "  Warning: Could not find </body> in VueTorrent index.html" -ForegroundColor Yellow
     }
