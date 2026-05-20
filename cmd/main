@@ -117,7 +117,7 @@ start)
         echo "提示：检测到其他 qBittorrent 进程正在运行 (PID: $EXISTING_PID)，继续启动本应用"
     fi
 
-    mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config"
+    mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config" "$(dirname "$LOG_FILE")"
 
     rotate_logs
 
