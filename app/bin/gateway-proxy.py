@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import http.server, socket, sys, os, signal, re, time, threading, gzip, zlib, select, traceback
+import http.server, socket, sys, os, signal, re, time, threading, gzip, zlib, select, traceback, json
 from http.client import HTTPConnection
 
 
@@ -63,12 +63,6 @@ try{
 document.querySelectorAll('.overlay,.desktop-overlay,#overlay,.MuiDialog-root').forEach(function(el){el.style.display='none';});
 }catch(ex){}
 },500);
-(async function(){
-try{
-var r=await _f.call(window,P+'/api/v2/auth/login',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'username=admin&password=adminadmin',credentials:'include'});
-                if(r.status===200&&r.url!==location.href)location.reload();
-}catch(e){}
-})();
 })();
 </script>'''
 
@@ -113,6 +107,166 @@ def get_target_port():
 if os.path.exists(SOCK_PATH):
     os.unlink(SOCK_PATH)
 
+# === Update Check API ===
+UPDATE_REPO = "sushazhi/fnos-qbittorrent"
+UPDATE_API = "https://api.github.com"
+UPDATE_PROXY = "https://ghfast.top/"
+_update_status = {"updating": False, "progress": 0, "message": ""}
+_update_lock = threading.Lock()
+_cached_version = {"expires": 0, "data": None}
+
+def _compare_version(v1, v2):
+    p1 = [int(x) for x in v1.split('.')]
+    p2 = [int(x) for x in v2.split('.')]
+    for i in range(max(len(p1), len(p2))):
+        n1 = p1[i] if i < len(p1) else 0
+        n2 = p2[i] if i < len(p2) else 0
+        if n2 > n1: return 1
+        if n2 < n1: return -1
+    return 0
+
+def _fetch_latest_version():
+    import urllib.request
+    url = f"{UPDATE_API}/repos/{UPDATE_REPO}/releases/latest"
+    req = urllib.request.Request(url, headers={"User-Agent": "fnos-qbittorrent-updater", "Accept": "application/vnd.github.v3+json"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+    version = data.get("tag_name", "").lstrip("v")
+    fpk_asset = None
+    for a in data.get("assets", []):
+        name = a.get("name", "")
+        if name.endswith(".fpk") and "qbittorrent" in name:
+            fpk_asset = a
+            break
+    return {
+        "version": version,
+        "changelog": data.get("body", ""),
+        "publishedAt": data.get("published_at", ""),
+        "releaseUrl": data.get("html_url", ""),
+        "fpkUrl": fpk_asset.get("browser_download_url", "") if fpk_asset else "",
+        "fpkSize": fpk_asset.get("size", 0) if fpk_asset else 0
+    }
+
+def _get_current_version():
+    possible_paths = []
+    appdest = os.environ.get("TRIM_APPDEST", "")
+    if appdest:
+        possible_paths.append(os.path.join(appdest, "manifest"))
+    if CONFIG_PATH:
+        parent = os.path.dirname(CONFIG_PATH)
+        possible_paths.append(os.path.join(parent, "..", "manifest"))
+    possible_paths.append("/var/apps/qbittorrent/manifest")
+    for p in possible_paths:
+        try:
+            if os.path.exists(p):
+                with open(p, 'r') as f:
+                    for line in f:
+                        if line.strip().startswith("version"):
+                            return line.split("=", 1)[1].strip()
+        except Exception:
+            pass
+    v = os.environ.get("TRIM_APPVER", "")
+    return v if v else "0.0.0"
+
+def _validate_fpk(path):
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(4)
+            if head[:2] == b'\x1f\x8b' or head == b'PK\x03\x04':
+                return True, ""
+            return False, f"内容异常 ({repr(head)})"
+    except Exception as e:
+        return False, str(e)
+
+def _download_fpk(url, dest, status, max_size=100*1024*1024):
+    import urllib.request, urllib.error
+    tmp = dest + ".part"
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code} {e.reason}"
+    except urllib.error.URLError as e:
+        return False, f"网络错误: {e.reason}"
+    except Exception as e:
+        return False, f"连接失败: {e}"
+    if resp.status != 200:
+        resp.close()
+        return False, f"服务器返回 HTTP {resp.status}"
+    total = int(resp.headers.get("Content-Length", 0))
+    if total > max_size:
+        resp.close()
+        return False, f"文件过大 ({total/1024/1024:.1f}MB > {max_size/1024/1024:.1f}MB)"
+    try:
+        resp.fp.raw._sock.settimeout(30)
+    except Exception:
+        pass
+    downloaded = 0
+    try:
+        with open(tmp, 'wb') as f:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if downloaded > max_size:
+                    resp.close()
+                    os.remove(tmp)
+                    return False, "下载内容超过大小限制"
+                if total > 0:
+                    pct = 10 + int(downloaded / total * 50)
+                    status["progress"] = pct
+                    status["message"] = f"正在下载... {downloaded/1024/1024:.1f}MB/{total/1024/1024:.1f}MB"
+    except Exception as e:
+        resp.close()
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        return False, f"下载中断: {e}"
+    resp.close()
+    if downloaded == 0:
+        os.remove(tmp)
+        return False, "下载文件为空"
+    os.replace(tmp, dest)
+    return True, ""
+
+def _perform_update(fpk_url):
+    global _update_status
+    try:
+        _update_status["message"] = "正在准备更新..."
+        _update_status["progress"] = 5
+        update_dir = "/tmp"
+        fpk_path = os.path.join(update_dir, "qbittorrent-update.fpk")
+        urls = [UPDATE_PROXY + fpk_url, fpk_url]
+        success = False
+        last_error = ""
+        for idx, download_url in enumerate(urls):
+            _update_status["message"] = "正在下载更新包..." if idx == 0 else "代理下载失败，尝试直连..."
+            _update_status["progress"] = 10 if idx == 0 else 10
+            ok, err = _download_fpk(download_url, fpk_path, _update_status)
+            if ok:
+                valid, reason = _validate_fpk(fpk_path)
+                if valid:
+                    success = True
+                    break
+                else:
+                    last_error = f"文件校验失败: {reason}"
+                    os.remove(fpk_path)
+            else:
+                last_error = err
+        if not success:
+            raise Exception(last_error or "下载失败")
+        _update_status["message"] = "下载完成！请点击下方按钮下载 fpk，然后前往 应用中心 → 手动安装 上传"
+        _update_status["progress"] = 100
+        _update_status["updating"] = False
+        _update_status["downloadUrl"] = PREFIX + "/api/update/download"
+    except Exception as e:
+        _update_status["message"] = f"更新失败: {e}"
+        _update_status["progress"] = 0
+        _update_status["updating"] = False
+
 
 def _tunnel_sock(client_sock, backend_sock):
     try:
@@ -148,6 +302,98 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             path = path[len(PREFIX):] or "/"
         return path
 
+    def _send_json(self, status, data):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_api(self, path):
+        if path == "/api/update/check":
+            try:
+                global _cached_version
+                now = time.time()
+                if _cached_version["data"] and _cached_version["expires"] > now:
+                    result = _cached_version["data"]
+                else:
+                    info = _fetch_latest_version()
+                    cur = _get_current_version()
+                    has_update = _compare_version(cur, info["version"]) > 0
+                    result = {
+                        "success": True,
+                        "currentVersion": cur,
+                        "latestVersion": info["version"],
+                        "hasUpdate": has_update,
+                        "changelog": info["changelog"],
+                        "publishedAt": info["publishedAt"],
+                        "releaseUrl": info["releaseUrl"],
+                        "fpkUrl": info["fpkUrl"],
+                        "message": "发现新版本" if has_update else "已是最新版本"
+                    }
+                    _cached_version = {"expires": now + 300, "data": result}
+                self._send_json(200, result)
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": str(e)})
+            return True
+
+        if path == "/api/update/install":
+            if self.command != "POST":
+                self._send_json(405, {"success": False, "error": "Method not allowed"})
+                return True
+            with _update_lock:
+                if _update_status["updating"]:
+                    self._send_json(409, {"success": False, "error": "正在更新中，请稍候"})
+                    return True
+                try:
+                    info = _fetch_latest_version()
+                    if not info["fpkUrl"]:
+                        self._send_json(400, {"success": False, "error": "未找到更新包"})
+                        return True
+                    _update_status["updating"] = True
+                    _update_status["progress"] = 0
+                    _update_status["message"] = "准备更新..."
+                    _update_status["latestVersion"] = info["version"]
+                    _update_status["fpkFilename"] = info["fpkUrl"].rsplit('/', 1)[-1] if info["fpkUrl"] else ""
+                except Exception as e:
+                    self._send_json(500, {"success": False, "error": str(e)})
+                    return True
+            self._send_json(200, {"success": True, "message": "开始下载更新"})
+            t = threading.Thread(target=_perform_update, args=(info["fpkUrl"],))
+            t.daemon = True
+            t.start()
+            return True
+
+        if path == "/api/update/status":
+            self._send_json(200, {"success": True, **_update_status})
+            return True
+
+        if path == "/api/update/download":
+            fpk_path = "/tmp/qbittorrent-update.fpk"
+            if not os.path.exists(fpk_path):
+                self._send_json(404, {"success": False, "error": "更新包不存在，请先点击一键更新"})
+                return True
+            try:
+                filename = _update_status.get("fpkFilename", "") or (f"qbittorrent-vuetorrent-{_update_status.get('latestVersion', '') or _get_current_version()}.fpk")
+                sz = os.path.getsize(fpk_path)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f"attachment; filename={filename}")
+                self.send_header("Content-Length", str(sz))
+                self.end_headers()
+                with open(fpk_path, 'rb') as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": str(e)})
+            return True
+
+        return False
+
     def do_request(self):
         if self.path == PREFIX:
             self.send_response(301)
@@ -161,6 +407,11 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             return
 
         path = self._strip_prefix()
+
+        if path.startswith("/api/update/"):
+            if self._handle_api(path):
+                return
+
         port = get_target_port()
 
         conn = HTTPConnection(TARGET_HOST, port, timeout=30)
