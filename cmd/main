@@ -66,7 +66,13 @@ start_proxy() {
 
     PROXY_PID=$!
     echo $PROXY_PID > "$PROXY_PID_FILE"
-    sleep 1
+
+    # 短时等待 socket 就绪（最长 0.5s）
+    local wait=0
+    while [ $wait -lt 5 ] && ! [ -S "$GATEWAY_SOCK" ]; do
+        sleep 0.1
+        wait=$((wait + 1))
+    done
 
     if kill -0 "$PROXY_PID" 2>/dev/null && [ -S "$GATEWAY_SOCK" ]; then
         echo "proxy started (PID: $PROXY_PID), gateway: ${GATEWAY_SOCK} -> 127.0.0.1:${WEBUI_PORT}"
@@ -180,7 +186,20 @@ EOF
     PID=$!
     echo $PID > "$PID_FILE"
 
-    sleep 3
+    # 短等待后检测进程是否存活（最长 3s，按 0.2s 间隔检测）
+    local elapsed=0
+    while [ $elapsed -lt 30 ]; do
+        if ! ps -p "$PID" > /dev/null 2>&1; then
+            break
+        fi
+        # 存活超过 0.6s 即可认为启动成功，提前跳出
+        if [ $elapsed -ge 6 ]; then
+            break
+        fi
+        sleep 0.1
+        elapsed=$((elapsed + 1))
+    done
+
     if ! ps -p "$PID" > /dev/null 2>&1; then
         if [ -f "$LOG_FILE" ]; then
             if grep -qi "port.*already\|bind.*failed\|address.*in.*use" "$LOG_FILE" 2>/dev/null; then
