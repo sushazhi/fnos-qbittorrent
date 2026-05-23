@@ -3,6 +3,36 @@ import http.server, socket, sys, os, signal, re, time, threading, gzip, zlib, se
 from http.client import HTTPConnection
 
 
+from collections import OrderedDict
+
+# 静态资源缓存（JS/CSS/图片等）
+class _StaticCache:
+    def __init__(self, max_size=30):
+        self._cache = OrderedDict()
+        self._max = max_size
+        self._lock = threading.Lock()
+    def get(self, key):
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+            return None
+    def set(self, key, status, headers, body):
+        with self._lock:
+            if len(self._cache) >= self._max:
+                self._cache.popitem(last=False)
+            self._cache[key] = (status, headers, body)
+_static_cache = _StaticCache()
+
+def _is_static_cacheable(method, path):
+    """GET请求、非API路径、有常见静态扩展名 → 可缓存"""
+    if method != 'GET':
+        return False
+    if path.startswith('/api/'):
+        return False
+    ext = path.rsplit('.', 1)[-1].lower() if '.' in path else ''
+    return ext in ('js','css','png','jpg','jpeg','gif','svg','ico','woff','woff2','ttf','eot')
+
 SOCK_PATH = sys.argv[1]
 TARGET_HOST = sys.argv[2]
 INITIAL_PORT = int(sys.argv[3])
@@ -412,6 +442,11 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             if self._handle_api(path):
                 return
 
+        # VueTorrent 健康检查端点，qBittorrent 无此路径
+        if path == "/backend/ping":
+            self._send_json(200, {"success": True, "version": "pong"})
+            return
+
         port = get_target_port()
 
         conn = HTTPConnection(TARGET_HOST, port, timeout=30)
@@ -440,6 +475,22 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         body = None
         if content_length:
             body = self.rfile.read(int(content_length))
+
+        # 静态资源缓存命中检查
+        cache_key = self.command + ":" + path
+        cacheable = _is_static_cacheable(self.command, path)
+        if cacheable:
+            cached = _static_cache.get(cache_key)
+            if cached:
+                c_status, c_headers, c_body = cached
+                self.send_response(c_status)
+                for k, v in c_headers:
+                    self.send_header(k, v)
+                self.send_header("Content-Length", str(len(c_body)))
+                self.end_headers()
+                self.wfile.write(c_body)
+                conn.close()
+                return
 
         try:
             conn.request(self.command, path, body, headers)
@@ -487,12 +538,17 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
             else:
+                # 读取完整响应体（用于缓存 + 流式回写）
+                data = resp.read()
+                # 缓存静态资源
+                if cacheable and 200 <= resp.status < 300:
+                    ch = [(k, v) for k, v in all_resp_headers
+                          if k.lower() not in ('transfer-encoding','connection','content-length','set-cookie')]
+                    _static_cache.set(cache_key, resp.status, ch, data)
+                # 发送
+                self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
-                while True:
-                    chunk = resp.read(65536)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
+                self.wfile.write(data)
         except Exception:
             log("unhandled exception in do_request %s %s:\n%s" % (self.command, path, traceback.format_exc()))
         finally:
