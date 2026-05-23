@@ -261,6 +261,9 @@ cp "$daemon_cache" "$daemon_target"
 if [ -f "${PROJECT_DIR}/app/bin/gateway-proxy.py" ]; then
     cp "${PROJECT_DIR}/app/bin/gateway-proxy.py" "${BUILD_DIR}/app/bin/"
 fi
+if [ -f "${PROJECT_DIR}/app/bin/qbt_password.py" ]; then
+    cp "${PROJECT_DIR}/app/bin/qbt_password.py" "${BUILD_DIR}/app/bin/"
+fi
 
 # [4/5] Preparing VueTorrent WebUI
 echo -e "${YELLOW}[4/5] Preparing VueTorrent WebUI...${NC}"

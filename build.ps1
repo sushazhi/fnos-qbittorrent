@@ -274,6 +274,9 @@ Copy-Item $daemonCache $daemonTarget -Force
 if (Test-Path "$PROJECT_DIR\app\bin\gateway-proxy.py") {
     Copy-Item "$PROJECT_DIR\app\bin\gateway-proxy.py" "$BUILD_DIR\app\bin\" -Force
 }
+if (Test-Path "$PROJECT_DIR\app\bin\qbt_password.py") {
+    Copy-Item "$PROJECT_DIR\app\bin\qbt_password.py" "$BUILD_DIR\app\bin\" -Force
+}
 
 Write-Host "[4/5] Preparing VueTorrent WebUI..." -ForegroundColor Yellow
 $vueCache = Join-Path $BUILD_DIR "vuetorrent.zip"

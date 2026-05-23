@@ -161,6 +161,13 @@ jobs:
             echo "gateway-proxy.py ready"
           fi
 
+          if [ -f app/bin/qbt_password.py ]; then
+            chmod +x app/bin/qbt_password.py
+            echo "qbt_password.py ready"
+          else
+            echo "WARNING: qbt_password.py not found"
+          fi
+
           echo "Binary: $(ls -lh app/bin/qbittorrent-nox | awk '{print $5}')"
           echo "VueTorrent files: $(ls -1 app/ui/vuetorrent/ 2>/dev/null | wc -l)"
 
