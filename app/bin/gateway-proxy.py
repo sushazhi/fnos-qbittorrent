@@ -46,7 +46,14 @@ _current_port = INITIAL_PORT
 _port_check_time = 0
 _port_lock = threading.Lock()
 
-INJECT_SCRIPT = b'''<script>
+import platform as _platform
+_RAW_ARCH = _platform.machine()
+if _RAW_ARCH in ('aarch64', 'arm64', 'armv8l'):
+    _detected_arch = 'arm64'
+else:
+    _detected_arch = 'amd64'
+
+INJECT_SCRIPT = b'<script>window.QBITTORRENT_APP_ARCH="' + _detected_arch.encode() + b'";</script><script>' + b'''
 (function(){
 var P="/app/qbittorrent";
 var _f=window.fetch;
@@ -138,12 +145,7 @@ if os.path.exists(SOCK_PATH):
     os.unlink(SOCK_PATH)
 
 # 检测当前架构（用于更新包匹配）
-import platform as _platform
-_RAW_ARCH = _platform.machine()
-if _RAW_ARCH in ('aarch64', 'arm64', 'armv8l'):
-    CURRENT_ARCH = 'arm64'
-else:
-    CURRENT_ARCH = 'amd64'
+CURRENT_ARCH = _detected_arch
 
 # === Update Check API ===
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"

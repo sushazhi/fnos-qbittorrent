@@ -18,7 +18,7 @@
 
   const CONFIG = {
     currentVersion: window.QBITTORRENT_APP_VERSION || '5.1.4',
-    currentArch: window.QBITTORRENT_APP_ARCH || 'amd64',
+    currentArch: window.QBITTORRENT_APP_ARCH || 'unknown',
     repoOwner: 'sushazhi',
     repoName: 'fnos-qbittorrent',
     checkInterval: 24 * 60 * 60 * 1000
