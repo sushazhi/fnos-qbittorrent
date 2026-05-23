@@ -187,7 +187,7 @@ EOF
     echo $PID > "$PID_FILE"
 
     # 短等待后检测进程是否存活（最长 3s，按 0.2s 间隔检测）
-    local elapsed=0
+    elapsed=0
     while [ $elapsed -lt 30 ]; do
         if ! ps -p "$PID" > /dev/null 2>&1; then
             break
