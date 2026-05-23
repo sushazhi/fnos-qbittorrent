@@ -13,6 +13,22 @@ echo "Running ${APP_NAME} install_callback..."
 if ! chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null; then
     echo "Warning: Failed to set executable permission on qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
 fi
+if [ -f "$BIN_DIR/qbt_password.py" ]; then
+    chmod +x "$BIN_DIR/qbt_password.py" 2>/dev/null || true
+fi
+
+# 生成密码哈希（如果用户提供了密码）
+# 通过 stdin 传入密码（避免在 ps 中暴露命令行参数）
+PASSWORD_HASH=""
+if [ -n "${wizard_password:-}" ]; then
+    echo "Generating password hash from user-provided password..."
+    PASSWORD_HASH=$(echo "${wizard_password}" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+    if [ -z "$PASSWORD_HASH" ]; then
+        echo "警告：密码哈希生成失败，将使用默认密码 adminadmin" > "$TRIM_TEMP_LOGFILE"
+    else
+        echo "Password hash generated successfully"
+    fi
+fi
 
 # 获取UI类型选择（默认vuetorrent）
 UI_TYPE="${wizard_ui_type:-vuetorrent}"
@@ -52,8 +68,8 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "Configuration file exists, updating settings while preserving other settings..."
 
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" '
-        BEGIN { alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; port_updated = 0; addr_updated = 0; lha_updated = 0; }
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" -v new_pass="${PASSWORD_HASH}" '
+        BEGIN { alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; port_updated = 0; addr_updated = 0; lha_updated = 0; pass_updated = 0; }
         {
             if ($0 == "[BitTorrent]") {
                 print $0
@@ -66,10 +82,21 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!port_updated) { print "WebUI\\Port=8080"; port_updated = 1; }
                 if (!addr_updated) { print "WebUI\\Address=127.0.0.1"; addr_updated = 1; }
                 if (!lha_updated) { print "WebUI\\LocalHostAuth=true"; lha_updated = 1; }
+                if (new_pass != "" && !pass_updated) {
+                    print "WebUI\\Password_PBKDF2=" new_pass;
+                    pass_updated = 1;
+                }
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
                 alt_ui_updated = 1
             }
-            else if (!/^WebUI\\Port=/ && !/^WebUI\\Address=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^WebUI\\LocalHostAuth=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
+            else if (new_pass != "" && $0 ~ /^WebUI\\Password_PBKDF2=/) {
+                if (!pass_updated) {
+                    print "WebUI\\Password_PBKDF2=" new_pass;
+                    pass_updated = 1;
+                }
+                next
+            }
+            else if (!/^WebUI\\Port=/ && !/^WebUI\\Address=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^WebUI\\LocalHostAuth=/ && !/^WebUI\\Password_PBKDF2=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
                 print $0
             }
         }
@@ -81,6 +108,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 print "WebUI\\Port=8080"
                 print "WebUI\\Address=127.0.0.1"
                 print "WebUI\\LocalHostAuth=true"
+                if (new_pass != "") print "WebUI\\Password_PBKDF2=" new_pass
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
             }
         }
@@ -108,8 +136,13 @@ else
         fi
     done
 
+    # 用户设置了新密码 → 覆盖旧凭证（使用向导中设置的用户名）
+    if [ -n "$PASSWORD_HASH" ]; then
+        OLD_USER="${wizard_username:-admin}"
+        OLD_PASS="$PASSWORD_HASH"
+        echo "使用用户设置的新密码"
     # 未找到旧凭证时使用默认值
-    if [ -z "$OLD_USER" ]; then
+    elif [ -z "$OLD_USER" ]; then
         OLD_USER="admin"
         OLD_PASS='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
     fi
@@ -164,7 +197,7 @@ echo ""
 echo "UI Type: $UI_TYPE"
 if [ "$UI_TYPE" = "native" ]; then
     echo "Mode: Direct access (new tab)"
-    echo "Access: http://<NAS_IP>:8080"
+    echo "Access: http://<NAS_IP>:5666/app/qbittorrent/"
 else
     echo "Mode: Gateway (iframe)"
     echo "Access: /app/qbittorrent"

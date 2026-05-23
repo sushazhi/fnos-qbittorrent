@@ -9,6 +9,7 @@ CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 echo "Reading current qBittorrent configuration..."
 
 CURRENT_UI_TYPE="vuetorrent"
+CURRENT_USERNAME="admin"
 
 if [ -f "$CONFIG_FILE" ]; then
     ALT_UI=$(grep -E "^WebUI\\\\AlternativeUIEnabled=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
@@ -17,9 +18,13 @@ if [ -f "$CONFIG_FILE" ]; then
     elif [ "$ALT_UI" = "false" ]; then
         CURRENT_UI_TYPE="native"
     fi
+
+    CURRENT_USERNAME=$(grep -E "^WebUI\\\\Username=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
+    CURRENT_USERNAME="${CURRENT_USERNAME:-admin}"
 fi
 
 echo "wizard_ui_type=${CURRENT_UI_TYPE}"
+echo "wizard_username=${CURRENT_USERNAME}"
 
-echo "Current configuration: UI=${CURRENT_UI_TYPE}"
+echo "Current configuration: UI=${CURRENT_UI_TYPE}, Username=${CURRENT_USERNAME}"
 exit 0

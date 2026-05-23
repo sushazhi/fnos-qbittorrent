@@ -12,15 +12,70 @@
       },
       {
         "type": "tips",
-        "helpText": "🔐 <b><span style='color:red'>默认访问信息：</span></b><span style='color:red'><b>账号 admin，密码 adminadmin</b></span>（请立即修改！）"
-      },
-      {
-        "type": "tips",
         "helpText": "🌐 <b>统一网关：</b>通过 fnOS 系统地址访问，无需配置端口"
       },
       {
         "type": "tips",
         "helpText": "🐛 <b>问题反馈：</b><a href='https://github.com/sushazhi/fnos-qbittorrent/issues' target='_blank'>GitHub Issues</a>"
+      }
+    ]
+  },
+  {
+    "stepTitle": "🔐 设置管理员账号",
+    "items": [
+      {
+        "type": "tips",
+        "helpText": "设置 qBittorrent WebUI 的管理员登录用户名和密码"
+      },
+      {
+        "type": "text",
+        "field": "wizard_username",
+        "label": "管理员用户名",
+        "initValue": "admin",
+        "rules": [
+          {
+            "required": true,
+            "message": "请设置管理员用户名"
+          },
+          {
+            "minLength": 1,
+            "message": "用户名不能为空"
+          }
+        ]
+      },
+      {
+        "type": "password",
+        "field": "wizard_password",
+        "label": "管理员密码",
+        "rules": [
+          {
+            "required": true,
+            "message": "请设置管理员密码"
+          },
+          {
+            "minLength": 6,
+            "message": "密码长度至少6位"
+          }
+        ]
+      },
+      {
+        "type": "password",
+        "field": "wizard_password_confirm",
+        "label": "确认密码",
+        "rules": [
+          {
+            "required": true,
+            "message": "请确认密码"
+          },
+          {
+            "equalTo": "wizard_password",
+            "message": "两次输入的密码不一致"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "⚠️ ⚠️ 请牢记此密码，后续登录 WebUI 需要使用"
       }
     ]
   },
@@ -66,7 +121,7 @@
       },
       {
         "type": "tips",
-        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需在新标签页中打开 http://NAS_IP:8080<br>✗ 无法检测新版本"
+        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需在新标签页中打开<br>✗ 无法检测新版本"
       },
       {
         "type": "radio",

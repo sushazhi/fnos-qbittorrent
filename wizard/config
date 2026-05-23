@@ -7,6 +7,22 @@
         "helpText": "修改应用配置参数，保存后将重启应用使配置生效"
       },
       {
+        "type": "text",
+        "field": "wizard_username",
+        "label": "管理员用户名",
+        "initValue": "admin",
+        "rules": [
+          {
+            "required": true,
+            "message": "请设置管理员用户名"
+          },
+          {
+            "minLength": 1,
+            "message": "用户名不能为空"
+          }
+        ]
+      },
+      {
         "type": "radio",
         "field": "wizard_ui_type",
         "label": "界面类型",

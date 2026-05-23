@@ -31,6 +31,12 @@ esac
 WEBUI_ADDRESS="127.0.0.1"
 LOCALHOST_AUTH="true"
 
+# 管理员用户名
+WIZARD_USERNAME="${wizard_username:-}"
+if [ -n "$WIZARD_USERNAME" ]; then
+    echo "管理员用户名: $WIZARD_USERNAME"
+fi
+
 WAS_RUNNING=false
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE" 2>/dev/null)
@@ -56,20 +62,30 @@ if [ -f "$CONFIG_FILE" ]; then
     }
 
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" '
-        BEGIN { in_preferences = 0; alt_written = 0; addr_written = 0; lha_written = 0; }
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" '
+        BEGIN {
+            in_preferences = 0;
+            alt_written = 0;
+            addr_written = 0;
+            lha_written = 0;
+            user_written = 0;
+        }
         {
             if ($0 ~ /^\[/) {
+                # 离开 section 时补写未出现的字段
                 if (in_preferences) {
                     if (!alt_written) print "WebUI\\AlternativeUIEnabled=" alt_ui
                     if (!addr_written) print "WebUI\\Address=" addr
                     if (!lha_written) print "WebUI\\LocalHostAuth=" lha
+                    if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
                 }
+                # 进入新 section
                 in_preferences = ($0 == "[Preferences]")
                 print $0
                 next
             }
 
+            # [Preferences] 字段
             if (in_preferences && $0 ~ /^WebUI\\AlternativeUIEnabled=/) {
                 if (!alt_written) { print "WebUI\\AlternativeUIEnabled=" alt_ui; alt_written = 1; }
                 next
@@ -82,6 +98,10 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!lha_written) { print "WebUI\\LocalHostAuth=" lha; lha_written = 1; }
                 next
             }
+            if (in_preferences && wizard_user != "" && $0 ~ /^WebUI\\Username=/) {
+                if (!user_written) { print "WebUI\\Username=" wizard_user; user_written = 1; }
+                next
+            }
 
             print $0
         }
@@ -90,6 +110,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!alt_written) print "WebUI\\AlternativeUIEnabled=" alt_ui
                 if (!addr_written) print "WebUI\\Address=" addr
                 if (!lha_written) print "WebUI\\LocalHostAuth=" lha
+                if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
