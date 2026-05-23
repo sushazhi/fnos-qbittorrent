@@ -137,6 +137,14 @@ def get_target_port():
 if os.path.exists(SOCK_PATH):
     os.unlink(SOCK_PATH)
 
+# 检测当前架构（用于更新包匹配）
+import platform as _platform
+_RAW_ARCH = _platform.machine()
+if _RAW_ARCH in ('aarch64', 'arm64', 'armv8l'):
+    CURRENT_ARCH = 'arm64'
+else:
+    CURRENT_ARCH = 'amd64'
+
 # === Update Check API ===
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
@@ -162,12 +170,21 @@ def _fetch_latest_version():
     with urllib.request.urlopen(req, timeout=15) as resp:
         data = json.loads(resp.read())
     version = data.get("tag_name", "").lstrip("v")
+    # 按当前架构匹配更新包（避免 arm 机器下载到 amd64 的包）
+    arch_suffix = "-" + CURRENT_ARCH + ".fpk"
     fpk_asset = None
     for a in data.get("assets", []):
         name = a.get("name", "")
-        if name.endswith(".fpk") and "qbittorrent" in name:
+        if name.endswith(arch_suffix) and "qbittorrent" in name:
             fpk_asset = a
             break
+    # fallback：未找到架构匹配时取第一个 .fpk
+    if not fpk_asset:
+        for a in data.get("assets", []):
+            name = a.get("name", "")
+            if name.endswith(".fpk") and "qbittorrent" in name:
+                fpk_asset = a
+                break
     return {
         "version": version,
         "changelog": data.get("body", ""),
@@ -360,6 +377,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                         "publishedAt": info["publishedAt"],
                         "releaseUrl": info["releaseUrl"],
                         "fpkUrl": info["fpkUrl"],
+                        "arch": CURRENT_ARCH,
                         "message": "发现新版本" if has_update else "已是最新版本"
                     }
                     _cached_version = {"expires": now + 300, "data": result}
