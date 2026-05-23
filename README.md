@@ -123,7 +123,7 @@ chmod +x build.sh
 
 | 版本 | 更新内容 |
 |------|----------|
-| v5.2.0.1 | 接入fnOS统一网关；VueTorrent iframe / 原生UI新标签页；Python反向代理；动态端口跟随；@appshare目录自动创建 |
+| v5.2.0.2 | 接入fnOS统一网关；VueTorrent iframe / 原生UI新标签页；Python反向代理；动态端口跟随；@appshare目录自动创建 |
 | v5.2.0.0 | 升级至qBittorrent 5.2.0 |
 | v5.1.4.3 | 修复与系统下载进程冲突；安装时需配置下载目录 |
 

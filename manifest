@@ -1,7 +1,7 @@
 appname = qbittorrent
-version = 5.2.0.2
+version = 5.2.0.3
 display_name = qBittorrent
-desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🔐 <b>默认账号：</b>admin，密码：adminadmin（请立即修改）<br><br>🎨 <b>双界面双图标：</b>桌面显示两个图标——"qBittorrent"在fnOS内打开VueTorrent | "原生界面"新标签页打开原生WebUI<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🎨 <b>双界面双图标：</b>桌面显示两个图标——"qBittorrent"在fnOS内打开VueTorrent | "原生界面"新标签页打开原生WebUI<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
 # 系统要求
 platform = all
@@ -22,4 +22,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.2.0.2<br>1. 接入fnOS统一网关<br>2. VueTorrent通过iframe在fnOS内打开，原生UI通过新标签页打开<br>3. Python反向代理自动剥离路径前缀并拦截API请求<br>4. 修复gateway-proxy代理进程因异常退出的bug，改用serve_forever()<br>5. 确保日志目录在启动时创建<br>6. 移除废弃的port-proxy.py（CGI路由，从未被使用）<br>7. 动态端口跟随（WebUI改端口后自动生效）<br>8. @appshare下下载目录自动创建<br>9. 同步上游qbittorrent 5.2.0 libtorrent 2.0.12
+changelog = v5.2.0.3<br>1. 安装向导支持设置管理员用户名和密码（PBKDF2 哈希，stdin 安全传入）<br>2. 配置向导支持修改管理员用户名<br>3. 移除 HTTPS 直连，全部走 fnOS 网关<br>4. 修复代理进程崩溃：`local` 函数外使用、`parse_args()` 未调用导致 Socket 绑定失败<br>5. 修复代理缓存 Content-Encoding 问题，JS/CSS 不再乱码报 SyntaxError<br>6. 静态资源内存缓存，二次打开秒开<br>7. 修复 VueTorrent `/backend/ping` 健康检查 500 错误<br>8. 修复原生 WebUI 提示错误的访问端口（8080 → 网关地址）<br>9. 移除废弃的 port-proxy.py（CGI路由，从未被使用）<br>10. 动态端口跟随（WebUI改端口后自动生效）<br>11. @appshare 下下载目录自动创建<br>12. 同步上游 qbittorrent 5.2.0 libtorrent 2.0.12
