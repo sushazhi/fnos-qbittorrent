@@ -81,7 +81,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 print $0
                 if (!port_updated) { print "WebUI\\Port=8080"; port_updated = 1; }
                 if (!addr_updated) { print "WebUI\\Address=127.0.0.1"; addr_updated = 1; }
-                if (!lha_updated) { print "WebUI\\LocalHostAuth=true"; lha_updated = 1; }
+                if (!lha_updated) { print "WebUI\\LocalHostAuth=false"; lha_updated = 1; }
                 if (new_pass != "" && !pass_updated) {
                     print "WebUI\\Password_PBKDF2=" new_pass;
                     pass_updated = 1;
@@ -107,7 +107,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 print "[Preferences]"
                 print "WebUI\\Port=8080"
                 print "WebUI\\Address=127.0.0.1"
-                print "WebUI\\LocalHostAuth=true"
+                print "WebUI\\LocalHostAuth=false"
                 if (new_pass != "") print "WebUI\\Password_PBKDF2=" new_pass
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
             }
@@ -157,7 +157,7 @@ Session\DefaultSavePath=${SAVE_PATH}
 General\Locale=zh_CN
 WebUI\Address=127.0.0.1
 WebUI\Port=8080
-WebUI\LocalHostAuth=true
+WebUI\LocalHostAuth=false
 WebUI\Username=${OLD_USER}
 WebUI\Password_PBKDF2=${OLD_PASS}
 WebUI\ClickjackingProtection=false
@@ -175,7 +175,7 @@ Session\DefaultSavePath=${SAVE_PATH}
 General\Locale=zh_CN
 WebUI\Address=127.0.0.1
 WebUI\Port=8080
-WebUI\LocalHostAuth=true
+WebUI\LocalHostAuth=false
 WebUI\Username=${OLD_USER}
 WebUI\Password_PBKDF2=${OLD_PASS}
 WebUI\ClickjackingProtection=false

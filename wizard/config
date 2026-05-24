@@ -23,6 +23,22 @@
         ]
       },
       {
+        "type": "password",
+        "field": "wizard_password",
+        "label": "管理员密码",
+        "initValue": "adminadmin",
+        "rules": [
+          {
+            "required": true,
+            "message": "请设置管理员密码"
+          },
+          {
+            "minLength": 6,
+            "message": "密码至少6位"
+          }
+        ]
+      },
+      {
         "type": "radio",
         "field": "wizard_ui_type",
         "label": "界面类型",

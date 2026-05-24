@@ -29,12 +29,30 @@ case "$UI_TYPE" in
         ;;
 esac
 WEBUI_ADDRESS="127.0.0.1"
-LOCALHOST_AUTH="true"
+LOCALHOST_AUTH="false"
 
 # 管理员用户名
 WIZARD_USERNAME="${wizard_username:-}"
 if [ -n "$WIZARD_USERNAME" ]; then
     echo "管理员用户名: $WIZARD_USERNAME"
+fi
+
+# 管理员密码
+WIZARD_PASSWORD="${wizard_password:-}"
+WIZARD_PASS_HASH=""
+if [ -n "$WIZARD_PASSWORD" ]; then
+    echo "管理员密码: (已设置)"
+    if command -v python3 >/dev/null 2>&1; then
+        WIZARD_PASS_HASH=$(python3 -c "
+import hashlib,base64
+salt=os.urandom(16) if hasattr(os,'urandom') else __import__('os').urandom(16)
+h=hashlib.pbkdf2_hmac('sha512','${WIZARD_PASSWORD}'.encode('utf-8'),salt,100000)
+print('@ByteArray('+base64.b64encode(salt+h).decode('ascii')+'):eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
+" 2>/dev/null)
+    fi
+    if [ -z "$WIZARD_PASS_HASH" ]; then
+        WIZARD_PASS_HASH=$(python3 "${TRIM_APPDEST}/bin/qbt_password.py" "$WIZARD_PASSWORD" 2>/dev/null)
+    fi
 fi
 
 WAS_RUNNING=false
@@ -62,13 +80,14 @@ if [ -f "$CONFIG_FILE" ]; then
     }
 
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" '
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" -v wizard_pass="${WIZARD_PASS_HASH}" '
         BEGIN {
             in_preferences = 0;
             alt_written = 0;
             addr_written = 0;
             lha_written = 0;
             user_written = 0;
+            pass_written = 0;
         }
         {
             if ($0 ~ /^\[/) {
@@ -78,6 +97,7 @@ if [ -f "$CONFIG_FILE" ]; then
                     if (!addr_written) print "WebUI\\Address=" addr
                     if (!lha_written) print "WebUI\\LocalHostAuth=" lha
                     if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
+                    if (wizard_pass != "" && !pass_written) print "WebUI\\Password_PBKDF2=" wizard_pass
                 }
                 # 进入新 section
                 in_preferences = ($0 == "[Preferences]")
@@ -102,6 +122,10 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!user_written) { print "WebUI\\Username=" wizard_user; user_written = 1; }
                 next
             }
+            if (in_preferences && wizard_pass != "" && $0 ~ /^WebUI\\Password_PBKDF2=/) {
+                if (!pass_written) { print "WebUI\\Password_PBKDF2=" wizard_pass; pass_written = 1; }
+                next
+            }
 
             print $0
         }
@@ -111,6 +135,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!addr_written) print "WebUI\\Address=" addr
                 if (!lha_written) print "WebUI\\LocalHostAuth=" lha
                 if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
+                if (wizard_pass != "" && !pass_written) print "WebUI\\Password_PBKDF2=" wizard_pass
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"

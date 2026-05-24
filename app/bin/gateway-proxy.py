@@ -485,8 +485,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             headers["Referer"] = re.sub(r'^https?://[^/]+', backend_origin, referer)
         headers["Accept-Encoding"] = "gzip, deflate"
 
-        # 直接透传浏览器原有 Cookie，proxy 不做任何 SID 管理
-        # qBittorrent 的 LocalHostAuth=true 会自动处理本地请求的认证
+        # LocalHostAuth=true + 代理从127.0.0.1转发 = qBittorrent自动放行，无需SID管理
         browser_cookie = self.headers.get("Cookie", "")
         if browser_cookie:
             headers["Cookie"] = browser_cookie
