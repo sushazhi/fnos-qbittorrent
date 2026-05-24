@@ -2,8 +2,8 @@
 
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.0.1-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.33.0-purple?style=flat-square&logo=vue.js)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.0.3-blue?style=flat-square&logo=qbittorrent)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.34.0-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -14,6 +14,7 @@
 | 功能 | 说明 |
 |------|------|
 | 🌐 **统一网关** | 接入fnOS网关，通过系统地址直接访问，无需配置端口 |
+| 🔓 **自动免登录** | 网关模式下跳过WebUI登录，统一网关已保证身份认证 |
 | 🎨 **双WebUI** | VueTorrent在fnOS内iframe打开，原生UI新标签页打开 |
 | 📡 **完整BT协议** | 支持BitTorrent v1/v2，DHT/PEX/LSD P2P网络 |
 | 📰 **RSS订阅** | 支持RSS自动下载，订阅管理 |
@@ -21,7 +22,7 @@
 | ⚡ **速度控制** | 灵活的速度限制和队列管理 |
 | 📁 **文件管理** | 顺序下载、选择性下载、文件优先级 |
 | 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
-| 🔔 **更新检测** | VueTorrent界面自动检测GitHub最新版本 |
+| 🔔 **更新检测** | VueTorrent界面自动检测GitHub最新版本，按架构匹配 |
 | 🔄 **动态端口** | WebUI改端口后代理自动跟随，无需重启 |
 
 ---
@@ -52,25 +53,31 @@
 
 代理功能：
 - 自动剥离 `/app/qbittorrent` 路径前缀
+- `LocalHostAuth=false` + 代理从127.0.0.1转发 → 自动跳过WebUI登录
 - 拦截 `fetch`/`XMLHttpRequest`/`WebSocket` 中的绝对路径请求
 - 重写HTML中的 `src`/`href`/`action` 绝对路径
+- WebSocket Upgrade 透传（原始TCP双向tunnel）
+- 非HTML响应保留gzip压缩透传，HTML响应解压重写
 - 动态读取配置文件端口，WebUI改端口后自动生效
+- 多线程并发处理
 
 ---
 
 ## 📦 安装与更新
 
-> **系统要求**：fnOS v1.1.31+（需要统一网关支持）
+> **系统要求**：fnOS v1.1.3104+（需要统一网关支持）
 
 ### 手动安装/更新
 
 1. 打开 **应用中心** → 左下角 **手动安装**
-2. 选择 `qbittorrent-vuetorrent-5.2.0.1-amd64.fpk` 文件
+2. 选择对应架构的fpk文件：
+   - x86设备：`qbittorrent-vuetorrent-5.2.0.3-amd64.fpk`
+   - ARM设备：`qbittorrent-vuetorrent-5.2.0.3-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.1-amd64.fpk
+appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.3-amd64.fpk
 ```
 
 ---
@@ -80,18 +87,19 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.1-amd64.fpk
 ### Windows (PowerShell)
 
 ```powershell
-.\build.ps1 -Version 5.2.0.1 -Arch amd64
+.\build.ps1 -Version 5.2.0.3 -Arch amd64
 ```
 
 ### Linux (Bash)
 
 ```bash
 chmod +x build.sh
-./build.sh --version 5.2.0.1 --arch amd64
+./build.sh --version 5.2.0.3 --arch amd64
 ```
 
 **构建特性**：
 - 自动获取对应版本的qBittorrent-nox和VueTorrent
+- 二进制架构自动检测（`platform.machine()`），arm64机器不会下载到amd64
 - 智能代理策略：gh-proxy.org → ghfast.top 自动切换
 - 自动注入更新检测脚本到VueTorrent
 
@@ -109,23 +117,18 @@ chmod +x build.sh
 
 | 项目 | 默认值 |
 |------|--------|
-| 系统版本 | fnOS v1.1.31+ |
+| 系统版本 | fnOS v1.1.3104+ |
 | 访问地址(VueTorrent) | `http://<NAS_IP>:5666/app/qbittorrent/` |
 | 访问地址(原生UI) | `http://<NAS_IP>:5666/app/qbittorrent/` (新标签页) |
-| 默认用户名 | `admin` |
-| 默认密码 | `adminadmin` |
+| LocalHostAuth | `false`（网关模式跳过localhost认证） |
 
-> ⚠️ **安全提示**：首次登录后请立即修改默认密码！
+> 🔓 网关模式下无需手动登录，统一网关已保证用户身份认证
 
 ---
 
 ## 📋 更新日志
 
-| 版本 | 更新内容 |
-|------|----------|
-| v5.2.0.2 | 接入fnOS统一网关；VueTorrent iframe / 原生UI新标签页；Python反向代理；动态端口跟随；@appshare目录自动创建 |
-| v5.2.0.0 | 升级至qBittorrent 5.2.0 |
-| v5.1.4.3 | 修复与系统下载进程冲突；安装时需配置下载目录 |
+详见 [GitHub Releases](https://github.com/sushazhi/fnos-qbittorrent/releases)
 
 ---
 
@@ -144,7 +147,8 @@ fnos-qbittorrent/
 ├── app/
 │   ├── bin/
 │   │   ├── qbittorrent-nox        # qBittorrent守护进程
-│   │   └── gateway-proxy.py       # Python反向代理（网关模式）
+│   │   ├── gateway-proxy.py       # Python反向代理（网关模式）
+│   │   └── qbt_password.py        # PBKDF2密码哈希生成
 │   └── ui/
 │       ├── vuetorrent/            # VueTorrent WebUI
 │       ├── config                 # 应用入口配置
@@ -155,7 +159,7 @@ fnos-qbittorrent/
 │   ├── install_init               # 安装前验证
 │   ├── install_callback           # 安装后配置
 │   ├── config_init                # 读取当前配置
-│   ├── config_callback            # 配置变更
+│   ├── config_callback            # 配置变更（用户名/密码/UI类型）
 │   ├── upgrade_init               # 升级前备份
 │   ├── upgrade_callback           # 升级后恢复
 │   ├── uninstall_init             # 卸载初始化
@@ -165,7 +169,7 @@ fnos-qbittorrent/
 │   └── resource                   # 资源映射
 ├── wizard/
 │   ├── install                    # 安装向导
-│   ├── config                     # 配置向导
+│   ├── config                     # 配置向导（含密码修改）
 │   ├── uninstall                  # 卸载向导
 │   └── upgrade                    # 升级向导
 ├── build.ps1                      # Windows构建脚本
