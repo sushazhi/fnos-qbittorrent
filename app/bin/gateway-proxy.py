@@ -48,7 +48,6 @@ except ImportError:
 # ---------------------------------------------------------------------------
 _RE_CONFIG_PORT = re.compile(r'^WebUI\\Port=(\d+)', re.MULTILINE)
 _RE_REFERER = re.compile(r'^https?://[^/]+')
-_RE_SET_COOKIE = re.compile(r';\s*SameSite\s*=\s*[^;\s]+', re.IGNORECASE)
 _RE_HTML_ATTR = re.compile(rb'(src|href|action)=([\'"])/(?!/?(?:app|cgi)/)')
 _RE_SAME_COOKIE_ATTR = re.compile(r';\s*[Ss]ame[Ss]ite\s*=\s*[^;\s]+')
 
@@ -716,6 +715,23 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         try:
             conn.request(self.command, path, body, headers)
             resp = conn.getresponse()
+        except ConnectionError as e:
+            # 连接池可能返回了 half-close 的失效连接（RemoteDisconnected）
+            # 用全新连接重试一次
+            logging.warning("request failed, retry with fresh connection: %s %s -> %s",
+                           self.command, path, e)
+            conn.close()
+            fresh = HTTPConnection(TARGET_HOST, port, timeout=30)
+            try:
+                fresh.request(self.command, path, body, headers)
+                resp = fresh.getresponse()
+                conn = fresh  # 后续 release 时 conn 指向新连接
+            except Exception as e2:
+                logging.error("request failed (after retry): %s %s -> %s",
+                              self.command, path, e2)
+                self.send_error(502, str(e2))
+                fresh.close()
+                return
         except Exception as e:
             logging.error("request failed: %s %s -> %s", self.command, path, e)
             self.send_error(502, str(e))
