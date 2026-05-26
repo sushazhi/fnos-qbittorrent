@@ -2,7 +2,7 @@
 
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.0.3-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.1.0-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.34.0-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
@@ -71,13 +71,13 @@
 
 1. 打开 **应用中心** → 左下角 **手动安装**
 2. 选择对应架构的fpk文件：
-   - x86设备：`qbittorrent-vuetorrent-5.2.0.3-amd64.fpk`
-   - ARM设备：`qbittorrent-vuetorrent-5.2.0.3-arm64.fpk`
+   - x86设备：`qbittorrent-vuetorrent-5.2.1.0-amd64.fpk`
+   - ARM设备：`qbittorrent-vuetorrent-5.2.1.0-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.3-amd64.fpk
+appcenter-cli install-local qbittorrent-vuetorrent-5.2.1.0-amd64.fpk
 ```
 
 ---
@@ -87,14 +87,14 @@ appcenter-cli install-local qbittorrent-vuetorrent-5.2.0.3-amd64.fpk
 ### Windows (PowerShell)
 
 ```powershell
-.\build.ps1 -Version 5.2.0.3 -Arch amd64
+.\build.ps1 -Version 5.2.1.0 -Arch amd64
 ```
 
 ### Linux (Bash)
 
 ```bash
 chmod +x build.sh
-./build.sh --version 5.2.0.3 --arch amd64
+./build.sh --version 5.2.1.0 --arch amd64
 ```
 
 **构建特性**：
@@ -178,6 +178,30 @@ fnos-qbittorrent/
 └── README.md
 ```
 
+---
+
+## 🙏 项目引用
+
+本项目构建于以下优秀的开源项目之上：
+
+| 项目 | 说明 | 许可证 |
+|------|------|--------|
+| [**qBittorrent**](https://github.com/qbittorrent/qBittorrent) | 核心 BT 下载引擎 (`qbittorrent-nox`) | [GPL-2.0](https://github.com/qbittorrent/qBittorrent/blob/master/COPYING) |
+| [**VueTorrent**](https://github.com/VueTorrent/VueTorrent) | 现代 WebUI 界面 | [MIT](https://github.com/VueTorrent/VueTorrent/blob/master/LICENSE) |
+| [**userdocs/qbittorrent-nox-static**](https://github.com/userdocs/qbittorrent-nox-static) | 静态编译的 qBittorrent-nox 二进制 | [GPL-2.0](https://github.com/userdocs/qbittorrent-nox-static/blob/main/LICENSE) |
+| [**fnOS**](https://www.fnnas.com/) | 飞牛 NAS 操作系统（统一网关） | 专有 |
+| [**fnpack**](https://static2.fnnas.com/fnpack/) | fnOS 应用打包工具 | 专有 |
+
+### 致谢
+
+- [@userdocs](https://github.com/userdocs) — 提供跨平台静态编译的 qBittorrent-nox
+- [@VueTorrent](https://github.com/VueTorrent) — 优秀的现代化 qBittorrent WebUI
+- 飞牛团队（fnOS）— 提供统一网关和应用平台
+
+---
+
 ## 📄 许可证
 
 本项目基于 [GPL-2.0](LICENSE) 许可证开源。
+
+本项目包含 [qBittorrent](https://github.com/qbittorrent/qBittorrent)（GPL-2.0）及 [VueTorrent](https://github.com/VueTorrent/VueTorrent)（MIT）的分发版本。
