@@ -1,7 +1,7 @@
 appname = qbittorrent
-version = 5.2.1.0
+version = 5.2.1.1
 display_name = qBittorrent
-desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🎨 <b>双界面双图标：</b>桌面显示两个图标——"qBittorrent"在fnOS内打开VueTorrent | "原生界面"新标签页打开原生WebUI<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🎨 <b>智能适配：</b>VueTorrent正常在iframe中使用 | 原生WebUI自动弹出新标签页解决iframe兼容问题<br><br>🔔 <b>更新检测：</b>VueTorrent与原生WebUI均支持自动检测GitHub最新版本，一键更新<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
 # 系统要求
 platform = all
@@ -22,4 +22,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.2.1.0<br>1. 同步上游版本qbittorrent 5.2.1 libtorrent 2.0.12
+changelog = v5.2.1.1<br>1. 智能适配：VueTorrent正常iframe显示 | 原生WebUI自动弹出新标签页解决iframe兼容问题<br>2. iframe窗口增加\"新标签页打开\"按钮<br>3. 移除单独的\"原生界面\"桌面图标<br>4. 更新检测统一：VueTorrent与原生WebUI均支持自动检测GitHub最新版本、一键更新

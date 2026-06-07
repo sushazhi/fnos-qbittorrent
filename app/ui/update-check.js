@@ -16,6 +16,9 @@
 (function() {
   'use strict';
 
+  if (window.__qbUC) return;
+  window.__qbUC = true;
+
   const CONFIG = {
     currentVersion: window.QBITTORRENT_APP_VERSION || '5.1.4',
     currentArch: window.QBITTORRENT_APP_ARCH || 'unknown',
@@ -31,9 +34,26 @@
   const CLOSE_DURATION = 24 * 60 * 60 * 1000;
 
   // 调试模式
-  const isDebug = new URLSearchParams(window.location.search).get('debug') === '1';
+  const searchParams = new URLSearchParams(window.location.search);
+  const isDebug = searchParams.get('debug') === '1';
+  const isClear = searchParams.get('clear') === '1';
   function log(msg) {
     if (isDebug) console.log('[Update]', msg);
+  }
+
+  // 清除缓存模式：?clear=1 清除所有缓存并刷新
+  if (isClear) {
+    try {
+      [CACHE_KEY, IGNORE_KEY, CLOSE_TIME_KEY, VERSION_KEY].forEach(function(k) {
+        localStorage.removeItem(k);
+      });
+      if (isDebug) console.log('[Update] 缓存已清除');
+      // 移除参数后刷新页面（保留其他参数）
+      var url = new URL(window.location.href);
+      url.searchParams.delete('clear');
+      window.location.replace(url.toString());
+    } catch (e) {}
+    return; // 停止执行，等待页面刷新
   }
 
   // 版本变更时自动清缓存

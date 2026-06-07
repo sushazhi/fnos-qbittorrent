@@ -117,11 +117,11 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行（网关模式）<br>✓ 可自动检测新版本"
+        "helpText": "<b>VueTorrent（推荐）</b><br>✓ 现代美观、响应式设计<br>✓ 在 fnOS 界面中直接运行（网关模式）<br>✓ 支持更新检测（VueTorrent与原生WebUI均支持）"
       },
       {
         "type": "tips",
-        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✗ 需在新标签页中打开<br>✗ 无法检测新版本"
+        "helpText": "<b>原生 WebUI</b><br>✓ 功能完整、轻量快速<br>✓ 可自动检测新版本<br>✗ 需在新标签页中打开"
       },
       {
         "type": "radio",

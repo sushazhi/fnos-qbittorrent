@@ -307,6 +307,9 @@ if [ -f "${PROJECT_DIR}/app/ui/update-check.js" ]; then
     cp "${PROJECT_DIR}/app/ui/update-check.js" "$vue_public_dir/"
     echo -e "${GREEN}  update-check.js copied to VueTorrent${NC}"
 fi
+# Also copy to app/ui/ for gateway-proxy.py runtime injection (native WebUI)
+cp "${PROJECT_DIR}/app/ui/update-check.js" "${BUILD_DIR}/app/ui/"
+echo -e "${GREEN}  update-check.js copied to gateway for native WebUI${NC}"
 
 # [4.5/5] Inject update check into VueTorrent
 echo -e "${YELLOW}[4.5/5] Injecting update check into WebUIs...${NC}"

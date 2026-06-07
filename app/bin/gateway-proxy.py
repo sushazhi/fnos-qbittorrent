@@ -84,11 +84,20 @@ if _RAW_ARCH in ('aarch64', 'arm64', 'armv8l'):
 else:
     CURRENT_ARCH = 'amd64'
 
+# 优先使用 fnOS 平台环境变量
+_CURRENT_VERSION = os.environ.get("TRIM_APPVER", "0.0.0")
+
 # ---------------------------------------------------------------------------
 # 注入脚本
 # ---------------------------------------------------------------------------
+try:
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ui', 'update-check.js'), 'r', encoding='utf-8') as _f:
+        _UPDATE_CHECK_JS = _f.read()
+except Exception:
+    _UPDATE_CHECK_JS = '/* update-check.js not found */'
+
 INJECT_SCRIPT = (
-    '<script>window.QBITTORRENT_APP_ARCH="%s";</script><script>'
+    '<script>window.QBITTORRENT_APP_ARCH="%s";window.QBITTORRENT_APP_VERSION="%s";</script><script>'
     '(function(){'
     'var P="%s";'
     'var _f=window.fetch;'
@@ -137,8 +146,58 @@ INJECT_SCRIPT = (
     '},500);'
     '})();'
     '</script>'
-) % (CURRENT_ARCH, PREFIX)
+    '<script>'
+    '(function(){'
+    'if(window.self!==window.top){'
+    'try{'
+    'var fe=window.frameElement;'
+    'if(!fe){return;}'
+      'function _qBDetect(){'
+     'var addBtn=function(){'
+     'var h=fe.closest(".trim-ui__app-layout--window");'
+     'if(h){h=h.querySelector(".trim-ui__app-layout--header");'
+     'if(h){var r=h.querySelector(":scope > div:last-child");'
+     'if(r&&!r.querySelector("#qb-newwindow-btn")){'
+     'var b=document.createElement("div");'
+     'b.id="qb-newwindow-btn";'
+     'b.title="新标签页打开";'
+     'b.className="flex h-full w-base shrink-0 cursor-pointer items-center justify-center px-[15px] text-[var(--semi-color-text-0)] hover:bg-[var(--semi-color-fill-0)]";'
+     'b.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4m-8-2l8-8m0 0v5m0-5h-5"/></svg>\';'
+     'b.onclick=function(e){e.stopPropagation();window.open(window.location.href,"_blank","noopener");};'
+     'r.insertBefore(b,r.firstChild);'
+     '}}}};'
+     'if(document.getElementById("app")){'
+     'addBtn();'
+     'setTimeout(addBtn,1000);'
+      '}else{'
+      'var _w=window.open(window.location.href,"_blank");'
+      'if(_w){'
+      'try{'
+      'var _qc=fe.closest(".trim-ui__app-layout--window");'
+      'if(_qc){_qc.remove();}'
+      '}catch(e){}'
+      '}else{'
+      'addBtn();'
+      'setTimeout(addBtn,1000);'
+      '}'
+     '}'
+     '}'
+    'if(document.readyState==="loading"){'
+    'document.addEventListener("DOMContentLoaded",_qBDetect);'
+    '}else{'
+    '_qBDetect();'
+    '}'
+    '}catch(e){console.warn("[qB]:",e.message);}'
+    '}else{'
+    'try{'
+    '/* __QB_UPDATE_CHECK__ */'
+    '}catch(e){console.warn("[qB] upd:",e.message);}'
+    '}'
+    '})();'
+    '</script>'
+) % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX)
 
+INJECT_SCRIPT = INJECT_SCRIPT.replace('/* __QB_UPDATE_CHECK__ */', _UPDATE_CHECK_JS)
 INJECT_SCRIPT_B = INJECT_SCRIPT.encode()
 
 # ---------------------------------------------------------------------------

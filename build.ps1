@@ -315,6 +315,9 @@ if (Test-Path "$PROJECT_DIR\app\ui\update-check.js") {
     Copy-Item "$PROJECT_DIR\app\ui\update-check.js" "$vuePublicDir\" -Force
     Write-Host "  update-check.js copied to VueTorrent" -ForegroundColor Green
 }
+# Also copy to app/ui/ for gateway-proxy.py runtime injection (native WebUI)
+Copy-Item "$PROJECT_DIR\app\ui\update-check.js" "$BUILD_DIR\app\ui\" -Force
+Write-Host "  update-check.js copied to gateway for native WebUI" -ForegroundColor Green
 
 # Inject update check into WebUIs
 Write-Host "[4.5/5] Injecting update check into WebUIs..." -ForegroundColor Yellow

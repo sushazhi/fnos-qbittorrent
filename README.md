@@ -15,33 +15,28 @@
 |------|------|
 | 🌐 **统一网关** | 接入fnOS网关，通过系统地址直接访问，无需配置端口 |
 | 🔓 **自动免登录** | 网关模式下跳过WebUI登录，统一网关已保证身份认证 |
-| 🎨 **双WebUI** | VueTorrent在fnOS内iframe打开，原生UI新标签页打开 |
+| 🎨 **智能适配** | VueTorrent iframe打开，原生WebUI自动弹出新标签页并关闭app窗口 |
 | 📡 **完整BT协议** | 支持BitTorrent v1/v2，DHT/PEX/LSD P2P网络 |
 | 📰 **RSS订阅** | 支持RSS自动下载，订阅管理 |
 | 🔍 **搜索引擎** | 内置多引擎搜索，聚合结果 |
 | ⚡ **速度控制** | 灵活的速度限制和队列管理 |
 | 📁 **文件管理** | 顺序下载、选择性下载、文件优先级 |
 | 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
-| 🔔 **更新检测** | VueTorrent界面自动检测GitHub最新版本，按架构匹配 |
+| 🔔 **更新检测** | 自动检测GitHub最新版本，VueTorrent与原生WebUI均支持，按架构匹配 |
 | 🔄 **动态端口** | WebUI改端口后代理自动跟随，无需重启 |
 
 ---
 
-## 🎨 双WebUI设计
+## 🎨 界面说明
 
-安装后桌面显示**两个图标**，分别对应不同界面：
+| 使用的WebUI | 行为 |
+|------------|------|
+| **VueTorrent** | 在fnOS iframe 中正常打开，窗口头部提供"新标签页打开"按钮 |
+| **qBittorrent原生WebUI** | iframe 中自动弹出新标签页，原 app 窗口自动关闭 |
 
-| 桌面图标 | 打开方式 | 说明 |
-|----------|----------|------|
-| **qBittorrent** | fnOS iframe（网关模式） | VueTorrent现代界面（推荐） |
-| **原生界面** | 浏览器新标签页（网关模式） | qBittorrent原生WebUI |
+VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置中关闭"使用备用WebUI"。
 
-### 切换方法
-
-两个图标可独立使用，无需切换。如需修改默认UI类型：
-
-1. **应用设置**：系统设置 → 应用设置 → qBittorrent → 界面类型
-2. **安装向导**：安装时选择界面类型（仅影响默认UI配置）
+> ⚠️ **弹窗提醒**：原生WebUI自动打开新标签页依赖 `window.open()`。请在浏览器中**允许 fnOS 站点弹出窗口**，否则 `window.open()` 会被拦截。拦截后会在窗口头部显示"新标签页打开"按钮，需手动点击打开。
 
 ---
 
@@ -60,6 +55,7 @@
 - 非HTML响应保留gzip压缩透传，HTML响应解压重写
 - 动态读取配置文件端口，WebUI改端口后自动生效
 - 多线程并发处理
+- 统一更新检测脚本注入（`update-check.js`），VueTorrent（构建注入）与原生WebUI（网关注入）共用
 
 ---
 
@@ -101,7 +97,7 @@ chmod +x build.sh
 - 自动获取对应版本的qBittorrent-nox和VueTorrent
 - 二进制架构自动检测（`platform.machine()`），arm64机器不会下载到amd64
 - 智能代理策略：gh-proxy.org → ghfast.top 自动切换
-- 自动注入更新检测脚本到VueTorrent
+- 统一更新检测脚本（`app/ui/update-check.js`），同时服务于VueTorrent与原生WebUI
 
 ---
 
@@ -118,8 +114,7 @@ chmod +x build.sh
 | 项目 | 默认值 |
 |------|--------|
 | 系统版本 | fnOS v1.1.3104+ |
-| 访问地址(VueTorrent) | `http://<NAS_IP>:5666/app/qbittorrent/` |
-| 访问地址(原生UI) | `http://<NAS_IP>:5666/app/qbittorrent/` (新标签页) |
+| 访问地址 | `http://<NAS_IP>:5666/app/qbittorrent/` |
 | LocalHostAuth | `false`（网关模式跳过localhost认证） |
 
 > 🔓 网关模式下无需手动登录，统一网关已保证用户身份认证
