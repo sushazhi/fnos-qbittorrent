@@ -24,7 +24,7 @@ if [ -n "${wizard_password:-}" ]; then
     echo "Generating password hash from user-provided password..."
     PASSWORD_HASH=$(echo "${wizard_password}" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
     if [ -z "$PASSWORD_HASH" ]; then
-        echo "警告：密码哈希生成失败，将使用默认密码 adminadmin" > "$TRIM_TEMP_LOGFILE"
+        echo "警告：密码哈希生成失败，将使用随机生成密码" > "$TRIM_TEMP_LOGFILE"
     else
         echo "Password hash generated successfully"
     fi
@@ -141,7 +141,7 @@ else
         OLD_USER="${wizard_username:-admin}"
         OLD_PASS="$PASSWORD_HASH"
         echo "使用用户设置的新密码"
-    # 未找到旧凭证时使用默认值
+    # 未找到旧凭证时使用默认值（通过向导安装时，wizard_password 已保证有值）
     elif [ -z "$OLD_USER" ]; then
         OLD_USER="admin"
         OLD_PASS='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'

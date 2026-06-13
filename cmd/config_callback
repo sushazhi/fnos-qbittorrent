@@ -42,16 +42,9 @@ WIZARD_PASSWORD="${wizard_password:-}"
 WIZARD_PASS_HASH=""
 if [ -n "$WIZARD_PASSWORD" ]; then
     echo "管理员密码: (已设置)"
-    if command -v python3 >/dev/null 2>&1; then
-        WIZARD_PASS_HASH=$(python3 -c "
-import hashlib,base64
-salt=os.urandom(16) if hasattr(os,'urandom') else __import__('os').urandom(16)
-h=hashlib.pbkdf2_hmac('sha512','${WIZARD_PASSWORD}'.encode('utf-8'),salt,100000)
-print('@ByteArray('+base64.b64encode(salt+h).decode('ascii')+'):eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9')
-" 2>/dev/null)
-    fi
-    if [ -z "$WIZARD_PASS_HASH" ]; then
-        WIZARD_PASS_HASH=$(python3 "${TRIM_APPDEST}/bin/qbt_password.py" "$WIZARD_PASSWORD" 2>/dev/null)
+    # 安全生成密码哈希：通过 stdin 传入密码，避免命令注入和 ps 泄露
+    if command -v python3 >/dev/null 2>&1 && [ -f "${TRIM_APPDEST}/bin/qbt_password.py" ]; then
+        WIZARD_PASS_HASH=$(echo "${WIZARD_PASSWORD}" | python3 "${TRIM_APPDEST}/bin/qbt_password.py" 2>/dev/null || echo "")
     fi
 fi
 
