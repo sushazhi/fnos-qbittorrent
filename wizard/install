@@ -49,10 +49,6 @@
         "label": "管理员密码",
         "rules": [
           {
-            "required": true,
-            "message": "请设置管理员密码"
-          },
-          {
             "minLength": 6,
             "message": "密码长度至少6位"
           }
@@ -64,10 +60,6 @@
         "label": "确认密码",
         "rules": [
           {
-            "required": true,
-            "message": "请确认密码"
-          },
-          {
             "equalTo": "wizard_password",
             "message": "两次输入的密码不一致"
           }
@@ -75,7 +67,7 @@
       },
       {
         "type": "tips",
-        "helpText": "⚠️ ⚠️ 请牢记此密码，后续登录 WebUI 需要使用"
+        "helpText": "🔑 密码留空表示保留已有配置的密码（适用于重装/升级场景）<br>⚠️ 首次安装请务必设置密码"
       }
     ]
   },

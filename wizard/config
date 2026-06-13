@@ -26,17 +26,17 @@
         "type": "password",
         "field": "wizard_password",
         "label": "管理员密码",
-        "initValue": "adminadmin",
+        "initValue": "",
         "rules": [
-          {
-            "required": true,
-            "message": "请设置管理员密码"
-          },
           {
             "minLength": 6,
             "message": "密码至少6位"
           }
         ]
+      },
+      {
+        "type": "tips",
+        "helpText": "🔑 密码留空表示不修改，将保留当前密码"
       },
       {
         "type": "radio",
