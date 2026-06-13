@@ -170,16 +170,19 @@ INJECT_SCRIPT = (
      'addBtn();'
      'setTimeout(addBtn,1000);'
       '}else{'
-      'var _w=window.open(window.location.href,"_blank");'
-      'if(_w){'
-      'try{'
-      'var _qc=fe.closest(".trim-ui__app-layout--window");'
-      'if(_qc){_qc.remove();}'
-      '}catch(e){}'
-      '}else{'
-      'addBtn();'
-      'setTimeout(addBtn,1000);'
-      '}'
+       'var _w=window.open(window.location.href,"_blank");'
+       'if(_w){'
+       'try{'
+       'var _qc=fe.closest(".trim-ui__app-layout--window");'
+       'if(_qc){'
+       'var _x=_qc.querySelector("[class*=\'close\']")||_qc.querySelector("[class*=\'Close\']");'
+       'if(_x&&typeof _x.click==="function"){_x.click();}'
+       '}'
+       '}catch(e){}'
+       '}else{'
+       'addBtn();'
+       'setTimeout(addBtn,1000);'
+       '}'
      '}'
      '}'
     'if(document.readyState==="loading"){'
@@ -558,14 +561,12 @@ def _tunnel_sock(client_sock, backend_sock):
 # ---------------------------------------------------------------------------
 # 代理请求处理器
 # ---------------------------------------------------------------------------
-def _is_security_header(key):
-    kl = key.lower()
-    return kl in (
-        "x-frame-options",
-        "content-security-policy",
-        "cross-origin-opener-policy",
-        "cross-origin-embedder-policy",
-    )
+# 需要移除的安全头（仅移除会阻止 iframe 嵌入的头）
+# X-Frame-Options: DENY 会阻止 iframe，必须移除
+# CSP 不应移除（提供 XSS 防护），通过 frame-ancestors 允许 iframe
+_REMOVE_HEADERS = frozenset({
+    "x-frame-options",
+})
 
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
@@ -658,7 +659,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             try:
                 filename = (
                     _update_status.get("fpkFilename", "")
-                    or ("qbittorrent-vuetorrent-%s.fpk" % (
+                    or ("qbittorrent-%s.fpk" % (
                         _update_status.get("latestVersion", "") or _get_current_version()
                     ))
                 )
@@ -820,12 +821,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # 过滤并发送响应头
             for key, value in all_resp_headers:
                 kl = key.lower()
-                # 移除 iframe 阻止安全头
-                if _is_security_header(kl):
+                # 仅移除会阻止 iframe 嵌入的头（X-Frame-Options: DENY）
+                if kl in _REMOVE_HEADERS:
                     continue
-                # Cookie 剥离 SameSite
+                # 保留 SameSite 属性（不再剥离），提升 CSRF 防护
                 if kl == "set-cookie":
-                    self.send_header(key, _RE_SAME_COOKIE_ATTR.sub('', value))
+                    self.send_header(key, value)
                     continue
                 # HTML 时自行处理 Content-Encoding
                 if kl == "content-encoding" and is_html:
@@ -843,6 +844,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     if raw is not None:
                         data = raw
                 data = rewrite_html(data)
+                # 添加 CSP 允许 iframe 嵌入，同时提供 XSS 防护
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
+                    "frame-ancestors *; "
+                    "img-src 'self' data: blob:; "
+                    "style-src 'self' 'unsafe-inline';"
+                )
                 if not is_head:
                     self.send_header("Content-Length", str(len(data)))
                     self.end_headers()
@@ -1008,7 +1017,7 @@ class ThreadedUnixHTTPServer(http.server.HTTPServer):
 
     def server_bind(self):
         self.socket.bind(self.server_address)
-        os.chmod(self.server_address, 0o666)
+        os.chmod(self.server_address, 0o660)
 
     def process_request(self, request, client_address):
         self._executor.submit(self._handle, request, client_address)
