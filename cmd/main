@@ -136,6 +136,10 @@ start)
     fi
 
     if [ ! -f "$CONFIG_FILE" ]; then
+        # 首次启动默认凭证（仅当未通过安装向导创建配置文件时的回退）
+        # 正常安装流程中，install_callback 已通过向导密码创建配置文件
+        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
 Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
@@ -146,9 +150,7 @@ WebUI\Address=127.0.0.1
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
-WebUI\ClickjackingProtection=false
-WebUI\CSRFProtection=false
+WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF

@@ -10,6 +10,7 @@ echo "Reading current qBittorrent configuration..."
 
 CURRENT_UI_TYPE="vuetorrent"
 CURRENT_USERNAME="admin"
+HAS_CREDENTIALS="false"
 
 if [ -f "$CONFIG_FILE" ]; then
     ALT_UI=$(grep -E "^WebUI\\\\AlternativeUIEnabled=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
@@ -21,10 +22,17 @@ if [ -f "$CONFIG_FILE" ]; then
 
     CURRENT_USERNAME=$(grep -E "^WebUI\\\\Username=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
     CURRENT_USERNAME="${CURRENT_USERNAME:-admin}"
+
+    # 检测是否已有凭据（用户名+密码哈希都存在）
+    CURRENT_PASS=$(grep -E "^WebUI\\\\Password_PBKDF2=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d ' \r\n')
+    if [ -n "$CURRENT_PASS" ]; then
+        HAS_CREDENTIALS="true"
+    fi
 fi
 
 echo "wizard_ui_type=${CURRENT_UI_TYPE}"
 echo "wizard_username=${CURRENT_USERNAME}"
+echo "wizard_has_credentials=${HAS_CREDENTIALS}"
 
-echo "Current configuration: UI=${CURRENT_UI_TYPE}, Username=${CURRENT_USERNAME}"
+echo "Current configuration: UI=${CURRENT_UI_TYPE}, Username=${CURRENT_USERNAME}, HasCredentials=${HAS_CREDENTIALS}"
 exit 0

@@ -86,6 +86,9 @@ else
     if [ "$CONFIG_EXISTS" = true ]; then
         echo "发现现有数据但无配置文件，创建默认配置"
         mkdir -p "$CONFIG_DIR"
+        # 默认凭证（仅当数据异常时的回退，正常升级不会触发）
+        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
 Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
@@ -96,9 +99,7 @@ WebUI\Address=127.0.0.1
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
-WebUI\ClickjackingProtection=false
-WebUI\CSRFProtection=false
+WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
@@ -107,6 +108,8 @@ EOF
         # 没有数据也没有备份：创建默认配置
         echo "无备份且无现有数据，创建默认配置"
         mkdir -p "$CONFIG_DIR"
+        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
 Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
@@ -117,9 +120,7 @@ WebUI\Address=127.0.0.1
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)
-WebUI\ClickjackingProtection=false
-WebUI\CSRFProtection=false
+WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
