@@ -374,7 +374,7 @@ $ok = Test-Path "qbittorrent.fpk"
 Pop-Location
 
 if ($ok) {
-    Move-Item "$BUILD_DIR\qbittorrent.fpk" "$PROJECT_DIR\qbittorrent-vuetorrent-$APP_VERSION-$ARCH.fpk" -Force
+    Move-Item "$BUILD_DIR\qbittorrent.fpk" "$PROJECT_DIR\qbittorrent-$APP_VERSION-$ARCH.fpk" -Force
     Write-Host "  Build successful!" -ForegroundColor Green
 } else {
     Write-Host "  ERROR: Build failed" -ForegroundColor Red
@@ -384,5 +384,5 @@ if ($ok) {
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
 Write-Host "  Build Complete!" -ForegroundColor Green
-Write-Host "  Output: qbittorrent-vuetorrent-$APP_VERSION-$ARCH.fpk" -ForegroundColor Green
+Write-Host "  Output: qbittorrent-$APP_VERSION-$ARCH.fpk" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green

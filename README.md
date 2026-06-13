@@ -67,13 +67,13 @@ VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置�
 
 1. 打开 **应用中心** → 左下角 **手动安装**
 2. 选择对应架构的fpk文件：
-   - x86设备：`qbittorrent-vuetorrent-5.2.1.0-amd64.fpk`
-   - ARM设备：`qbittorrent-vuetorrent-5.2.1.0-arm64.fpk`
+   - x86设备：`qbittorrent-5.2.1.0-amd64.fpk`
+   - ARM设备：`qbittorrent-5.2.1.0-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-vuetorrent-5.2.1.0-amd64.fpk
+appcenter-cli install-local qbittorrent-5.2.1.0-amd64.fpk
 ```
 
 ---

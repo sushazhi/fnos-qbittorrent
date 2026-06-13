@@ -366,7 +366,7 @@ fi
 cd "$PROJECT_DIR"
 
 if [ "$build_ok" = true ]; then
-    mv "${BUILD_DIR}/qbittorrent.fpk" "${PROJECT_DIR}/qbittorrent-vuetorrent-${APP_VERSION}-${ARCH}.fpk"
+    mv "${BUILD_DIR}/qbittorrent.fpk" "${PROJECT_DIR}/qbittorrent-${APP_VERSION}-${ARCH}.fpk"
     echo -e "${GREEN}  Build successful!${NC}"
 else
     echo -e "${RED}  ERROR: Build failed${NC}"
@@ -376,5 +376,5 @@ fi
 echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Build Complete!${NC}"
-echo -e "${GREEN}  Output: qbittorrent-vuetorrent-${APP_VERSION}-${ARCH}.fpk${NC}"
+echo -e "${GREEN}  Output: qbittorrent-${APP_VERSION}-${ARCH}.fpk${NC}"
 echo -e "${GREEN}========================================${NC}"

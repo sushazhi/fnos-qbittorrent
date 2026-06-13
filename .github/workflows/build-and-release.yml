@@ -195,7 +195,7 @@ jobs:
             exit 1
           fi
 
-          PACKAGE_NAME="qbittorrent-vuetorrent-${APP_VERSION}-${{ matrix.arch }}.fpk"
+          PACKAGE_NAME="qbittorrent-${APP_VERSION}-${{ matrix.arch }}.fpk"
           mv qbittorrent.fpk "${PACKAGE_NAME}"
 
           echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
