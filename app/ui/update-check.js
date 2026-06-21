@@ -167,6 +167,12 @@
       return;
     }
 
+    // 移除已存在的通知，防止叠加
+    var existingNotification = document.getElementById('qbittorrent-update-notification');
+    if (existingNotification) {
+      existingNotification.remove();
+    }
+
     const notification = document.createElement('div');
     notification.id = 'qbittorrent-update-notification';
 
@@ -199,7 +205,7 @@
       '</div>'
     ].join('');
 
-    // 添加样式
+    // 添加样式（仅首次注入，后续复用）
     if (!document.getElementById('update-notification-styles')) {
       const styles = document.createElement('style');
       styles.id = 'update-notification-styles';
@@ -225,14 +231,15 @@
             'display: flex;',
             'align-items: flex-start;',
             'gap: 12px;',
-            'background: rgba(255, 255, 255, 0.05);',
-            'backdrop-filter: blur(25px);',
-            '-webkit-backdrop-filter: blur(25px);',
-            'border: 1px solid rgba(255, 255, 255, 0.1);',
-            'box-shadow: 0 8px 32px rgba(0,0,0,0.1);',
+            'background: rgba(255, 255, 255, 0.35);',
+            'backdrop-filter: blur(50px) saturate(180%) brightness(110%);',
+            '-webkit-backdrop-filter: blur(50px) saturate(180%) brightness(110%);',
+            'border: 1px solid rgba(255, 255, 255, 0.25);',
+            'box-shadow: 0 12px 48px rgba(0,0,0,0.12);',
             'padding: 20px 24px;',
-            'border-radius: 12px;',
+            'border-radius: 16px;',
             'position: relative;',
+            'transform: translateZ(0);',
         '}',
         '.update-notification-content.closing {',
           'animation: slideOut 0.3s ease-in;',
@@ -332,10 +339,10 @@
         '/* \u6df1\u8272\u4e3b\u9898 */',
         '@media (prefers-color-scheme: dark) {',
           '.update-notification-content {',
-            'background: rgba(45, 45, 45, 0.95);',
-            'backdrop-filter: blur(25px);',
-            '-webkit-backdrop-filter: blur(25px);',
-            'border: 1px solid rgba(255, 255, 255, 0.1);',
+            'background: rgba(40, 44, 52, 0.45);',
+             'backdrop-filter: blur(50px) saturate(180%) brightness(110%);',
+             '-webkit-backdrop-filter: blur(50px) saturate(180%) brightness(110%);',
+            'border: 1px solid rgba(255, 255, 255, 0.12);',
           '}',
           '.update-notification-title {',
             'color: #fff;',
@@ -525,8 +532,11 @@
       }, 2000);
     };
 
-    document.body.appendChild(notification);
-    log('显示更新通知: v' + updateInfo.latestVersion);
+    // 等待一帧让样式生效后再添加弹窗，+ transform:translateZ(0) 强制 GPU 合成层
+    requestAnimationFrame(function() {
+      document.body.appendChild(notification);
+      log('显示更新通知: v' + updateInfo.latestVersion);
+    });
   }
 
   async function checkUpdate() {
@@ -619,13 +629,26 @@
     }
     }
 
+  // 暴露给外部用于手动检测（强制刷新，跳过缓存和关闭抑制）
+  window.__qbCheckUpdate = function() {
+    if (typeof _autoCheckTimer !== 'undefined') {
+      clearTimeout(_autoCheckTimer);
+    }
+    try {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(CLOSE_TIME_KEY);
+    } catch(e) {}
+    return checkUpdate();
+  };
+
   // 页面加载后延迟检查
+  var _autoCheckTimer;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-      setTimeout(checkUpdate, 2000);
+      _autoCheckTimer = setTimeout(checkUpdate, 2000);
     });
   } else {
-    setTimeout(checkUpdate, 2000);
+    _autoCheckTimer = setTimeout(checkUpdate, 2000);
   }
 
 })();
