@@ -67,7 +67,8 @@ logging.basicConfig(
 PREFIX = "/app/qbittorrent"
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
-UPDATE_PROXY = "https://ghfast.top/"
+UPDATE_PROXY_MAIN = "https://gh-proxy.org/"
+UPDATE_PROXY_BACKUP = "https://ghfast.top/"
 STATIC_EXTENSIONS = frozenset({
     'js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
     'woff', 'woff2', 'ttf', 'eot',
@@ -442,7 +443,7 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
         os.remove(tmp)
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        resp = urllib.request.urlopen(req, timeout=60)
+        resp = urllib.request.urlopen(req, timeout=30)
     except urllib.error.HTTPError as e:
         return False, "HTTP %d %s" % (e.code, e.reason)
     except urllib.error.URLError as e:
@@ -491,29 +492,52 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
     return True, ""
 
 
-def _perform_update(fpk_url):
+def _perform_update(info):
     global _update_status
     try:
+        fpk_url = info["fpkUrl"]
+        expected_version = info["version"]
+        expected_size = info.get("fpkSize", 0)
+        # URL 版本一致性检查，从 URL 中提取版本与 API 返回的版本比对
+        fpk_filename = fpk_url.rsplit('/', 1)[-1] if '/' in fpk_url else fpk_url
+        m = re.search(r'qbittorrent-([\d.]+)-', fpk_filename)
+        url_version = m.group(1) if m else ""
+        if url_version and url_version != expected_version:
+            raise Exception(
+                "版本信息不一致: API 返回 %s, 更新包 URL 指向 %s" % (expected_version, url_version)
+            )
         _update_status["message"] = "正在准备更新..."
         _update_status["progress"] = 5
         fpk_path = "/tmp/qbittorrent-update.fpk"
-        urls = [UPDATE_PROXY + fpk_url, fpk_url]
+        urls = [UPDATE_PROXY_MAIN + fpk_url, UPDATE_PROXY_BACKUP + fpk_url, fpk_url]
         success = False
         last_error = ""
+        messages = [
+            "正在下载更新包...",
+            "主代理下载失败，切换备用代理...",
+            "备用代理下载失败，尝试直连..."
+        ]
         for idx, download_url in enumerate(urls):
-            _update_status["message"] = (
-                "正在下载更新包..." if idx == 0 else "代理下载失败，尝试直连..."
-            )
+            _update_status["message"] = messages[idx]
             _update_status["progress"] = 10
             ok, err = _download_fpk(download_url, fpk_path, _update_status)
             if ok:
                 valid, reason = _validate_fpk(fpk_path)
-                if valid:
-                    success = True
-                    break
-                else:
+                if not valid:
                     last_error = "文件校验失败: %s" % reason
                     os.remove(fpk_path)
+                    continue
+                # 校验文件大小是否与 GitHub API 返回的一致
+                actual_size = os.path.getsize(fpk_path)
+                if expected_size > 0 and actual_size != expected_size:
+                    last_error = (
+                        "文件大小不匹配: 期望 %d 字节, 实际 %d 字节" %
+                        (expected_size, actual_size)
+                    )
+                    os.remove(fpk_path)
+                    continue
+                success = True
+                break
             else:
                 last_error = err
         if not success:
@@ -646,7 +670,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     self._send_json(500, {"success": False, "error": str(e)})
                     return True
             self._send_json(200, {"success": True, "message": "开始下载更新"})
-            t = threading.Thread(target=_perform_update, args=(info["fpkUrl"],))
+            t = threading.Thread(target=_perform_update, args=(info,))
             t.daemon = True
             t.start()
             return True
