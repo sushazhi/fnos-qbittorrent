@@ -173,7 +173,7 @@ jobs:
 
       - name: Create .fpk package
         run: |
-          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-${{ matrix.fnpack_arch }}"
+          FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-${{ matrix.fnpack_arch }}"
           echo "Downloading fnpack from: $FNPACK_URL"
           wget -q "$FNPACK_URL" -O fnpack
           chmod +x fnpack

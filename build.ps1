@@ -73,7 +73,7 @@ Write-Host "Target architecture: $ARCH" -ForegroundColor Cyan
 $BUILD_DIR = Join-Path $PROJECT_DIR ".local-build"
 $VERSION_FILE = Join-Path $BUILD_DIR "versions.json"
 
-$FNPACK_URL = "https://static2.fnnas.com/fnpack/fnpack-1.2.1-windows-amd64"
+$FNPACK_URL = "https://static2.fnnas.com/fnpack/fnpack-1.2.3-windows-amd64"
 $VUE_TORRENT_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
 $QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 

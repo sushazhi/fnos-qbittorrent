@@ -69,7 +69,7 @@ fi
 echo -e "${CYAN}Target architecture: ${ARCH}${NC}"
 
 # URLs
-FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.1-linux-${ARCH}"
+FNPACK_URL="https://static2.fnnas.com/fnpack/fnpack-1.2.3-linux-${ARCH}"
 VUE_TORRENT_API="https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
 QBT_API="https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 
