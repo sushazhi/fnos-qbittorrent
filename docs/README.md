@@ -1,276 +1,50 @@
-# fnOS 应用开发文档索引
+# fnos-qbittorrent 文档
 
-> 本项目包含完整的 fnOS 应用开发文档体系
+## 官方 fnOS 开发文档（权威来源）
 
-## 📚 文档列表
+> **所有通用 fnOS 应用开发知识**，不再本地维护副本。
+> 官方已提供 AI 友好的文档索引和完整快照，始终保持最新。
 
-### 1. [fnOS_Developer_Guide.md](./fnOS_Developer_Guide.md) - 基础开发指南
+| 资源 | URL | 用途 |
+|------|-----|------|
+| **文档索引** | https://developer.fnnas.com/llms.txt | 按分类列出所有文档链接，快速定位 |
+| **完整文档** | https://developer.fnnas.com/llms-full.txt | 完整内容快照，AI 工具可直接批量摄入 |
 
-**适合人群**: 初学者、新手开发者
+**涵盖内容**：应用框架、Manifest、环境变量、应用权限、应用资源、应用入口、index.cgi、统一网关、用户向导、应用依赖、中间件服务、运行时环境、图标规范、CLI 工具（fnpack / appcenter-cli）、Native/Docker 应用案例、更新日志。
 
-**主要内容**:
-- ✅ fnOS 系统概述
-- ✅ 快速开始指南
-- ✅ 应用结构说明
-- ✅ 生命周期脚本详解
-- ✅ 配置文件说明 (manifest, privilege, resource)
-- ✅ 向导界面配置
-- ✅ 环境变量说明
-- ✅ 开发工具介绍
+**使用方式**：
 
-**文档规模**: 1,741 行
+```bash
+# AI 工具可直接读取完整文档
+curl -fsSL https://developer.fnnas.com/llms-full.txt
 
----
-
-### 2. [fnOS_Advanced_Guide.md](./fnOS_Advanced_Guide.md) - 进阶开发指南
-
-**适合人群**: 有一定经验的开发者
-
-**主要内容**:
-- ✅ 统一网关注册（gatewayPrefix/gatewaySocket）
-- ✅ 登录认证（X-Trim-* Header）
-- ✅ 应用依赖关系管理
-- ✅ 运行时环境配置 (Python, Node.js, Java)
-- ✅ 中间件服务集成 (Redis, MinIO, RabbitMQ)
-- ✅ Docker 应用构建完整流程
-- ✅ Native 应用构建实战案例
-
-**文档规模**: 600 行
-
----
-
-### 3. [fnOS_Tools_Guide.md](./fnOS_Tools_Guide.md) - 开发工具完整指南
-
-**适合人群**: 所有开发者
-
-**主要内容**:
-- ✅ 图标 Icon 设计规范
-- ✅ fnpack 完整使用指南
-- ✅ appcenter-cli 完整使用指南
-- ✅ 最佳实践建议
-
-**文档规模**: 400 行
-
----
-
-### 4. [CI_CD.md](./CI_CD.md) - CI/CD 文档
-
-**适合人群**: 需要自动化构建的开发者
-
-**主要内容**:
-- ✅ GitHub Actions 配置
-- ✅ 自动化构建流程
-- ✅ 发布管理
-
----
-
-### 5. [IMPROVEMENT_SUGGESTIONS.md](./IMPROVEMENT_SUGGESTIONS.md) - 项目改进建议
-
-**适合人群**: 维护者、贡献者
-
-**主要内容**:
-- ✅ 短期可落地优化项（安全、安装体验、FAQ、CI）
-- ✅ 中长期演进方向（配置统一化、日志诊断、测试体系）
-- ✅ 建议执行顺序与效果指标
-
----
-
-## 🎯 学习路径建议
-
-### 初学者路径
-
-```
-1. fnOS_Developer_Guide.md (基础概念)
-   ↓
-2. fnOS_Tools_Guide.md (工具使用)
-   ↓
-3. 实践开发
-   ↓
-4. fnOS_Advanced_Guide.md (进阶内容)
-```
-
-### 有经验开发者路径
-
-```
-1. fnOS_Developer_Guide.md (快速了解)
-   ↓
-2. fnOS_Advanced_Guide.md (深入内容)
-   ↓
-3. fnOS_Tools_Guide.md (工具参考)
-   ↓
-4. CI_CD.md (自动化构建)
+# 或先看索引再定位到具体页面
+curl -fsSL https://developer.fnnas.com/llms.txt
 ```
 
 ---
 
-## 📖 文档特点
+## 项目特有文档
 
-### 1. 完整性
-
-- ✅ 覆盖从基础到进阶的全部内容
-- ✅ 包含 60+ 完整代码示例
-- ✅ 提供实战案例参考
-
-### 2. 准确性
-
-- ✅ 所有内容基于官方文档
-- ✅ 所有示例经过验证
-- ✅ 所有配置符合规范
-
-### 3. 实用性
-
-- ✅ 提供详细使用说明
-- ✅ 提供最佳实践建议
-- ✅ 提供常见问题解答
+| 文档 | 内容 |
+|------|------|
+| [CI_CD.md](./CI_CD.md) | GitHub Actions CI/CD 配置、构建工作流、发布流程 |
+| [项目 README](../README.md) | 安装、构建、网关架构、项目结构、默认配置、界面说明 |
 
 ---
 
-## 🔍 快速查找
+## 常见问题
 
-### 按主题查找
+### 为什么 docs/ 里没有传统的 fnOS 开发指南？
 
-| 主题 | 文档 | 章节 |
-|------|------|------|
-| 应用结构 | Developer Guide | 应用结构 |
-| 生命周期脚本 | Developer Guide | 生命周期脚本 |
-| 配置文件 | Developer Guide | 配置文件 |
-| 向导界面 | Developer Guide | 向导界面 |
-| 环境变量 | Developer Guide | 环境变量 |
-| 数据共享路径 | Developer Guide | 环境变量 → TRIM_DATA_SHARE_PATHS |
-| 统一网关 | Advanced Guide | 统一网关注册 |
-| 登录认证 | Advanced Guide | 登录认证 |
-| 依赖管理 | Advanced Guide | 应用依赖关系 |
-| 运行时环境 | Advanced Guide | 运行时环境 |
-| 中间件服务 | Advanced Guide | 中间件服务 |
-| Docker 应用 | Advanced Guide | Docker 应用构建 |
-| Native 应用 | Advanced Guide | Native 应用构建 |
-| 图标设计 | Tools Guide | 图标 Icon 设计规范 |
-| fnpack 工具 | Tools Guide | fnpack 完整使用指南 |
-| appcenter-cli | Tools Guide | appcenter-cli 完整使用指南 |
+之前维护了 4 份本地通用开发文档（~4,000 行），但官方已提供 `llms.txt` / `llms-full.txt`，专门为 AI 和开发者设计且持续更新。本地维护副本必然过时，因此全部裁剪，统一指向官方源。
 
-### 按需求查找
+### 开发 fnOS 应用时怎么看文档？
 
-| 需求 | 推荐文档 |
-|------|----------|
-| 我要快速开始 | Developer Guide → 快速开始 |
-| 我要了解应用结构 | Developer Guide → 应用结构 |
-| 我要配置安装向导 | Developer Guide → 向导界面 |
-| 我要使用 Python | Advanced Guide → 运行时环境 |
-| 我要接入统一网关 | Advanced Guide → 统一网关注册 |
-| 我要获取登录用户信息 | Advanced Guide → 登录认证 |
-| 我要使用 Redis | Advanced Guide → 中间件服务 |
-| 我要开发 Docker 应用 | Advanced Guide → Docker 应用构建 |
-| 我要设计图标 | Tools Guide → 图标 Icon 设计规范 |
-| 我要打包应用 | Tools Guide → fnpack 完整使用指南 |
-| 我要安装应用 | Tools Guide → appcenter-cli 完整使用指南 |
-| 我要使用数据共享路径 | Developer Guide → 环境变量 → TRIM_DATA_SHARE_PATHS |
+1. 先看 `llms.txt` 了解文档结构
+2. 需要某个主题的完整内容，直接读取 `llms-full.txt`（或打开具体页面）
+3. 本项目特有的实现细节，参考上述「项目特有文档」
 
----
+### 之前同步的 fnnas_developer_guide_full.md 呢？
 
-## 📝 文档更新记录
-
-### 2025-02-25
-
-- ✅ 补充 `TRIM_DATA_SHARE_PATHS` 环境变量说明
-- ✅ 添加数据共享路径使用示例
-- ✅ 补充安装后目录结构说明
-- ✅ 补充目录功能说明表格
-- ✅ 更新 manifest 字段说明（platform、install_dep_apps 等）
-- ✅ 补充 resource 配置：usr-local-linker、docker-project
-
-### 2025-02-22
-
-- ✅ 完整阅读官方文档 3,612 行
-- ✅ 创建基础开发指南 (1,741 行)
-- ✅ 创建进阶开发指南 (600 行)
-- ✅ 创建工具完整指南 (400 行)
-- ✅ 更正所有错误内容
-- ✅ 补充所有缺失内容
-
----
-
-## 🔗 相关资源
-
-### 官方资源
-
-- [fnOS 官方网站](https://www.fnnas.com/)
-- [fnOS 开发者文档](https://developer.fnnas.com/docs/guide)
-- [fnOS 论坛](https://club.fnnas.com/)
-
-### 官方文档链接
-
-> 来源：https://developer.fnnas.com/docs/category/开发指南
-
-**📚 【基础】**
-
-| 文档 | URL |
-|------|-----|
-| 架构概述 | https://developer.fnnas.com/docs/core-concepts/framework |
-| Manifest | https://developer.fnnas.com/docs/core-concepts/manifest |
-| 环境变量 | https://developer.fnnas.com/docs/core-concepts/environment-variables |
-| 应用权限 | https://developer.fnnas.com/docs/core-concepts/privilege |
-| 应用资源 | https://developer.fnnas.com/docs/core-concepts/resource |
-| 应用入口 | https://developer.fnnas.com/docs/core-concepts/app-entry |
-| 用户向导 | https://developer.fnnas.com/docs/core-concepts/wizard |
-
-**🔥 【进阶】**
-
-| 文档 | URL |
-|------|-----|
-| 统一网关注册 | https://developer.fnnas.com/docs/core-concepts/gateway-registration |
-| 登录认证 | https://developer.fnnas.com/docs/core-concepts/gateway-authentication |
-| 应用依赖关系 | https://developer.fnnas.com/docs/core-concepts/dependency |
-| 运行时环境 | https://developer.fnnas.com/docs/core-concepts/runtime |
-| 中间件服务 | https://developer.fnnas.com/docs/core-concepts/middleware |
-
-**💻 【实战】**
-
-| 文档 | URL |
-|------|-----|
-| Docker 应用构建 | https://developer.fnnas.com/docs/core-concepts/docker |
-| Native 应用构建 | https://developer.fnnas.com/docs/core-concepts/native |
-
-**📜 【规范】**
-
-| 文档 | URL |
-|------|-----|
-| 图标 Icon | https://developer.fnnas.com/docs/core-concepts/icon |
-
-**🚀 快速开始**
-
-| 文档 | URL |
-|------|-----|
-| 准备工作 | https://developer.fnnas.com/docs/quick-started/prerequisites |
-| 创建应用 | https://developer.fnnas.com/docs/quick-started/create-application |
-| 测试应用 | https://developer.fnnas.com/docs/quick-started/test-application |
-| 上架应用 | https://developer.fnnas.com/docs/quick-started/publish-application |
-
-**🔧 CLI 工具**
-
-| 文档 | URL |
-|------|-----|
-| fnpack | https://developer.fnnas.com/docs/cli/fnpack |
-| appcenter-cli | https://developer.fnnas.com/docs/cli/appcentercli |
-
-### 开发工具
-
-- [fnpack 下载](https://static2.fnnas.com/fnpack/)
-- [appcenter-cli 下载](https://static2.fnnas.com/cli/)
-
-### 设计资源
-
-- [图标 PSD 源文件](https://static.fnnas.com/appcenter-marketing/fnpack_ICON_256.zip)
-- [iconfont 图标库](https://www.iconfont.cn/)
-
----
-
-## 💡 使用建议
-
-1. **离线查阅**: 所有文档均为 Markdown 格式,可离线使用
-2. **快速搜索**: 使用 Ctrl+F 在文档中搜索关键词
-3. **代码复制**: 所有代码示例均可直接复制使用
-4. **实践优先**: 建议边学边做,快速上手
-
----
-
-**文档维护**: 本文档体系基于官方文档创建,将持续更新以保持与官方同步。
+已在 2026-07-08 同步到官方 2026-07-05 版本后，替换为指向官方 `llms-full.txt` 的引用。不再维护本地快照。

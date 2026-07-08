@@ -293,4 +293,4 @@ act pull_request
 - [GitHub Actions 文档](https://docs.github.com/en/actions)
 - [fnOS 开发者文档](https://developer.fnnas.com/)
 - [项目 README](../README.md)
-- [开发指南](../AGENTS.md)
+- [fnOS 开发文档 (llms.txt)](https://developer.fnnas.com/llms.txt)
