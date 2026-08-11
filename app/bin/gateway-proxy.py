@@ -28,20 +28,42 @@ import zlib
 import select
 import traceback
 import json
-import queue
-import concurrent.futures
 import logging
 from http.client import HTTPConnection
 from collections import OrderedDict
 
+# 懒加载模块：仅在需要时才导入
+_queue = None
+def _get_queue():
+    global _queue
+    if _queue is None:
+        import queue
+        _queue = queue
+    return _queue
+
+_concurrent_futures = None
+def _get_concurrent_futures():
+    global _concurrent_futures
+    if _concurrent_futures is None:
+        import concurrent.futures
+        _concurrent_futures = concurrent.futures
+    return _concurrent_futures
+
 # ---------------------------------------------------------------------------
-# brotli 可选支持
+# brotli 可选支持（懒加载）
 # ---------------------------------------------------------------------------
-try:
-    import brotli
-    HAS_BROTLI = True
-except ImportError:
-    HAS_BROTLI = False
+_brotli = None
+HAS_BROTLI = False
+def _get_brotli():
+    global _brotli, HAS_BROTLI
+    if _brotli is None:
+        try:
+            import brotli as _br
+            _brotli = _br
+            HAS_BROTLI = True
+        except ImportError:
+            _brotli = False
+    return _brotli if HAS_BROTLI else None
 
 # ---------------------------------------------------------------------------
 # 编译好的正则（模块级，避免运行时反复编译）
@@ -67,13 +89,14 @@ logging.basicConfig(
 PREFIX = "/app/qbittorrent"
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
-UPDATE_PROXY_MAIN = "https://gh-proxy.org/"
-UPDATE_PROXY_BACKUP = "https://ghfast.top/"
+UPDATE_PROXY_MAIN = "https://gh-proxy.com/"
+UPDATE_PROXY_BACKUP = "https://gh-proxy.org/"
 STATIC_EXTENSIONS = frozenset({
     'js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
     'woff', 'woff2', 'ttf', 'eot',
 })
 FPK_MAX_SIZE = 100 * 1024 * 1024  # 100 MB
+DOWNLOAD_TIMEOUT = 120  # 总下载超时 2 分钟
 
 # ---------------------------------------------------------------------------
 # 架构检测
@@ -89,15 +112,22 @@ else:
 _CURRENT_VERSION = os.environ.get("TRIM_APPVER", "0.0.0")
 
 # ---------------------------------------------------------------------------
-# 注入脚本
+# 注入脚本（模块级构建模板，update-check.js 延迟加载）
 # ---------------------------------------------------------------------------
-try:
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ui', 'update-check.js'), 'r', encoding='utf-8') as _f:
-        _UPDATE_CHECK_JS = _f.read()
-except Exception:
-    _UPDATE_CHECK_JS = '/* update-check.js not found */'
+_UPDATE_CHECK_JS_CACHED = None
 
-INJECT_SCRIPT = (
+def _get_update_check_js():
+    global _UPDATE_CHECK_JS_CACHED
+    if _UPDATE_CHECK_JS_CACHED is not None:
+        return _UPDATE_CHECK_JS_CACHED
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'ui', 'update-check.js'), 'r', encoding='utf-8') as _f:
+            _UPDATE_CHECK_JS_CACHED = _f.read()
+    except Exception:
+        _UPDATE_CHECK_JS_CACHED = '/* update-check.js not found */'
+    return _UPDATE_CHECK_JS_CACHED
+
+_INJECT_SCRIPT_TEMPLATE = (
     '<script>window.QBITTORRENT_APP_ARCH="%s";window.QBITTORRENT_APP_VERSION="%s";</script><script>'
     '(function(){'
     'var P="%s";'
@@ -154,19 +184,219 @@ INJECT_SCRIPT = (
     'try{'
     'var fe=window.frameElement;'
     'if(!fe){return;}'
+    'var P="' + PREFIX + '";'
+    'var _dlPath="";'
+    'var _dlPathDisplay="";'
+    'var _titleBase="qBittorrent";'
+    ''
+    '/* ===== 0. 最小化 Penpal 桥接：连接 fnOS 宿主 ===== */'
+    'var __qbSdk=(function(){'
+      'var connected=false;'
+      'var methods={};'
+      'var pending={};'
+      'var msgId=1;'
+      'var listeners={};'
+      'var _cbId=1;'
+      ''
+      'function connect(){'
+        'window.parent.postMessage({penpal:"syn"},"*");'
+        'setTimeout(function(){'
+          'if(!connected){'
+            'window.__QB_SDK_READY=true;'
+            'window.dispatchEvent(new Event("qb-sdk-ready"));'
+          '}'
+        '},1500);'
+      '}'
+      ''
+      'window.addEventListener("message",function(ev){'
+        'var d=ev.data;'
+        'if(!d||!d.penpal)return;'
+        'if(d.penpal==="synAck"){'
+          'methods=d.methodNames||[];'
+          'window.parent.postMessage({penpal:"ack",methodNames:[],config:{}},"*");'
+          'connected=true;'
+          'window.__QB_SDK_READY=true;'
+          'window.dispatchEvent(new Event("qb-sdk-ready"));'
+        '}else if(d.penpal==="reply"){'
+          'var cb=pending[d.id];'
+          'if(cb){'
+            'delete pending[d.id];'
+            'if(d.resolution==="fulfilled"){cb.resolve(d.returnValue);}'
+            'else{cb.reject(new Error((d.returnValue&&d.returnValue.message)||"call failed"));}'
+          '}'
+        '}'
+      '});'
+      ''
+      'function call(methodName,args){'
+        'return new Promise(function(resolve,reject){'
+          'var id=msgId++;'
+          'pending[id]={resolve:resolve,reject:reject};'
+          'var payload={penpal:"call",id:id,methodName:methodName,args:args||[]};'
+          'if(!connected){setTimeout(function(){connect();},0);}'
+          'window.parent.postMessage(payload,"*");'
+        '});'
+      '}'
+      ''
+      'function has(m){return connected&&methods.indexOf(m)>-1;}'
+      'function $on(evt,cb){listeners[evt]=listeners[evt]||[];listeners[evt].push(cb);'
+        'return function(){};}'
+      'function $off(evt,cb){var l=listeners[evt];if(l){var i=l.indexOf(cb);if(i>-1)l.splice(i,1);}}'
+      'return {'
+        'get ready(){return connected;},'
+        'isWeb:true,'
+        'has:has,'
+        'call:call,'
+        '$on:$on,'
+        '$off:$off,'
+        '$notify:function(opts){return call("$notify",[opts||{}]);},'
+        'getPlatformConfig:function(){return call("getPlatformConfig",[]);},'
+        'setTitle:function(t){return call("setTitle",[t]);},'
+        'openFileManager:function(p){return call("openFileManager",[p]);},'
+        'convertPath:function(p,l){return call("convertPath",[p,l]);},'
+        'pickUserFile:function(opts){return call("pickUserFile",[opts||{}]);},'
+        'pickSharedFile:function(opts){return call("pickSharedFile",[opts||{}]);}'
+      '};'
+    '})();'
+    'var sdk=__qbSdk;'
+    'setTimeout(function(){connect();},0);'
+    ''
+    '/* ===== 1. 主题/语言监听 ===== */'
+    'sdk.$on("os/theme",function(t){document.documentElement.setAttribute("data-theme",t);});'
+    'sdk.$on("os/language",function(l){document.documentElement.setAttribute("lang",l);});'
+    'try{'
+      'sdk.getPlatformConfig().then(function(c){'
+        'if(c&&c.theme)document.documentElement.setAttribute("data-theme",c.theme);'
+        'if(c&&c.language)document.documentElement.setAttribute("lang",c.language);'
+      '}).catch(function(){});'
+    '}catch(e){}'
+    ''
+    '/* ===== 2. 获取下载路径 ===== */'
+    'fetch(P+"/api/download-path").then(function(r){return r.json();}).then(function(d){'
+      'if(d.success&&d.path){'
+        '_dlPath=d.path;'
+        '_dlPathDisplay=d.displayPath||d.path;'
+        'if(!d.hasACL){console.warn("[qB] 下载目录权限不足:",d.path);}'
+        'var fb=document.getElementById("qb-openfolder-btn");'
+        'if(fb)fb.title="打开下载目录: "+_dlPathDisplay;'
+      '}'
+    '}).catch(function(){});'
+    ''
+    '/* ===== 3. 窗口标题显示下载进度 ===== */'
+    'function _qBUpdateTitle(){'
+      'try{'
+        'fetch(P+"/api/v2/torrents/info?filter=downloading").then(function(r){return r.json();}).then(function(d){'
+          'var n=Array.isArray(d)?d.length:0;'
+          'var t=_titleBase;'
+          'if(n>0)t+=" ("+n+"个下载中)";'
+          'if(sdk.ready&&sdk.has("setTitle")){sdk.setTitle(t);}'
+          'else if(window.setTitle){window.setTitle(t);}'
+          'else{document.title=t;}'
+        '}).catch(function(){});'
+      '}catch(e){}'
+    '}'
+    'setTimeout(_qBUpdateTitle,3000);'
+    'setInterval(_qBUpdateTitle,10000);'
       'function _qBDetect(){'
      'var addBtn=function(){'
      'var h=fe.closest(".trim-ui__app-layout--window");'
      'if(h){h=h.querySelector(".trim-ui__app-layout--header");'
      'if(h){var r=h.querySelector(":scope > div:last-child");'
      'if(r&&!r.querySelector("#qb-newwindow-btn")){'
+     'var c=document.createElement("div");'
+     'c.id="qb-pickfolder-btn";'
+     'c.title="选择下载目录";'
+     'c.className="flex h-full w-base shrink-0 cursor-pointer items-center justify-center px-[15px] text-[var(--semi-color-text-0)] hover:bg-[var(--semi-color-fill-0)]";'
+     'c.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14m-7-7h14"/></svg>\';'
+     'c.onclick=function(e){e.stopPropagation();'
+       'var P="' + PREFIX + '";'
+       'var opts={multiple:false,directory:true,title:"选择下载目录",okText:"确认选择",sidebarGroup:["myFiles","otherShare","favorites"]};'
+       'var doPick=function(){'
+       'var sel=sdk&&sdk.pickUserFile?sdk.pickUserFile.bind(sdk):null;'
+       'var notify=function(t,m){'
+        'var colors={success:"#22c55e",error:"#ef4444",warning:"#f59e0b",info:"#3b82f6"};'
+        'var icons={success:"✓",error:"✕",warning:"!",info:"ℹ"};'
+        'var c=colors[t]||"#3b82f6";'
+        'var el=document.createElement("div");'
+        'el.style.position="fixed";'
+        'el.style.top="16px";'
+        'el.style.right="16px";'
+        'el.style.zIndex="2147483647";'
+        'el.style.display="flex";'
+        'el.style.alignItems="center";'
+        'el.style.gap="10px";'
+        'el.style.maxWidth="360px";'
+        'el.style.padding="12px 16px";'
+        'el.style.background="rgba(30,32,38,0.95)";'
+        'el.style.borderLeft="4px solid "+c;'
+        'el.style.borderRadius="8px";'
+        'el.style.color="#fff";'
+        'el.style.fontSize="13px";'
+        'el.style.boxShadow="0 8px 24px rgba(0,0,0,0.35)";'
+        'var icon=document.createElement("span");'
+        'icon.style.width="18px";icon.style.height="18px";icon.style.flexShrink="0";'
+        'icon.style.borderRadius="50%%";icon.style.background=c;icon.style.color="#fff";'
+        'icon.style.display="flex";icon.style.alignItems="center";icon.style.justifyContent="center";'
+        'icon.style.fontSize="12px";icon.style.fontWeight="bold";'
+        'icon.textContent=icons[t]||"ℹ";'
+        'var txt=document.createElement("span");'
+        'txt.style.flex="1";txt.style.wordBreak="break-all";'
+        'txt.textContent=m;'
+        'el.appendChild(icon);el.appendChild(txt);'
+        'document.body.appendChild(el);'
+        'setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},3500);'
+       '};'
+       'if(!sel){notify("error","文件选择器不可用");return;}'
+       'sel(opts).then(function(res){'
+        'var p=null;'
+        'if(Array.isArray(res)){p=res[0];}'
+        'else if(res&&res.data){p=Array.isArray(res.data)?res.data[0]:res.data;}'
+        'else if(res&&res.paths&&res.paths.length){p=res.paths[0];}'
+        'if(!p){notify("warning","未选择目录");return;}'
+        'fetch(P+"/api/set-save-path",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})}).then(function(r){return r.json();}).then(function(r2){'
+          'if(r2.success){'
+            'notify("success",r2.applied?("下载目录已设置为: "+p):("配置已保存，请重启应用后生效"));'
+          '}'
+          'else{notify("error","设置失败: "+(r2.error||"未知错误"));}'
+        '}).catch(function(){notify("error","设置失败，网络错误");});'
+       '}).catch(function(err){'
+        'var m=(err&&err.message)||"无法打开文件选择器";'
+        'if(m.indexOf("cancel")>-1||m.indexOf("canceled")>-1){return;}'
+        'notify("error","选择目录失败: "+m);'
+       '});'
+       '};'
+       'if(!sdk.ready){setTimeout(doPick,800);}else{doPick();}'
+     '};'
+     'r.insertBefore(c,r.firstChild);'
+     'var f=document.createElement("div");'
+     'f.id="qb-openfolder-btn";'
+     'f.title="打开下载目录";'
+     'f.className="flex h-full w-base shrink-0 cursor-pointer items-center justify-center px-[15px] text-[var(--semi-color-text-0)] hover:bg-[var(--semi-color-fill-0)]";'
+     'f.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/></svg>\';'
+     'f.onclick=function(e){e.stopPropagation();'
+       'var P="' + PREFIX + '";'
+       'fetch(P+"/api/download-path").then(function(r){return r.json();}).then(function(d){'
+         'if(d.success&&d.path){'
+           '/* 通过 Penpal 桥接调用 fnOS 宿主 openFileManager，传真实内部路径 */'
+           'sdk.openFileManager(d.path).catch(function(){'
+             'var inp=document.createElement("textarea");'
+             'inp.value=d.path;inp.style.position="fixed";inp.style.opacity="0";'
+             'document.body.appendChild(inp);inp.select();'
+             'document.execCommand("copy");document.body.removeChild(inp);'
+             'alert("打开失败，下载目录路径已复制: "+d.path);'
+           '});'
+         '}else{'
+           'alert("无法获取下载目录路径");'
+         '}'
+       '}).catch(function(){alert("获取下载目录失败");});'
+     '};'
+     'r.insertBefore(f,r.firstChild);'
      'var b=document.createElement("div");'
      'b.id="qb-newwindow-btn";'
      'b.title="新标签页打开";'
      'b.className="flex h-full w-base shrink-0 cursor-pointer items-center justify-center px-[15px] text-[var(--semi-color-text-0)] hover:bg-[var(--semi-color-fill-0)]";'
      'b.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4m-8-2l8-8m0 0v5m0-5h-5"/></svg>\';'
      'b.onclick=function(e){e.stopPropagation();window.open(window.location.href,"_blank","noopener");};'
-     'r.insertBefore(b,r.firstChild);'
+     'r.insertBefore(b, f);'
      'var u=document.createElement("div");'
      'u.id="qb-updatecheck-btn";'
      'u.title="检测更新";'
@@ -203,10 +433,23 @@ INJECT_SCRIPT = (
     '}'
     '})();'
     '</script>'
-) % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX)
+)
 
-INJECT_SCRIPT = INJECT_SCRIPT.replace('/* __QB_UPDATE_CHECK__ */', _UPDATE_CHECK_JS)
-INJECT_SCRIPT_B = INJECT_SCRIPT.encode()
+# 构建模板（不含 update-check.js 内容，运行时注入）
+_INJECT_SCRIPT_TEMPLATE = _INJECT_SCRIPT_TEMPLATE % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX)
+
+def _build_inject_script():
+    """构建最终注入脚本（包含 update-check.js 内容）"""
+    return _INJECT_SCRIPT_TEMPLATE.replace('/* __QB_UPDATE_CHECK__ */', _get_update_check_js())
+
+# 延迟构建：仅在首次需要时编码
+_INJECT_SCRIPT_B_CACHED = None
+
+def _get_inject_script_bytes():
+    global _INJECT_SCRIPT_B_CACHED
+    if _INJECT_SCRIPT_B_CACHED is None:
+        _INJECT_SCRIPT_B_CACHED = _build_inject_script().encode()
+    return _INJECT_SCRIPT_B_CACHED
 
 # ---------------------------------------------------------------------------
 # 命令行参数
@@ -226,10 +469,12 @@ class ConnectionPool:
         self._host = host
         self._port = port
         self._timeout = timeout
-        self._pool = queue.Queue(maxsize)
+        _q = _get_queue()
+        self._pool = _q.Queue(maxsize)
 
     def acquire(self):
         """从池中取一个连接，没有则新建。"""
+        _q = _get_queue()
         try:
             conn = self._pool.get_nowait()
             if conn.sock is not None:
@@ -239,22 +484,24 @@ class ConnectionPool:
                 except (OSError, AttributeError):
                     pass
             conn.close()
-        except queue.Empty:
+        except _q.Empty:
             pass
         return HTTPConnection(self._host, self._port, timeout=self._timeout)
 
     def release(self, conn):
         """归还连接，池满则关闭。"""
+        _q = _get_queue()
         try:
             self._pool.put_nowait(conn)
-        except queue.Full:
+        except _q.Full:
             conn.close()
 
     def close_all(self):
+        _q = _get_queue()
         while True:
             try:
                 self._pool.get_nowait().close()
-            except queue.Empty:
+            except _q.Empty:
                 break
 
 
@@ -283,6 +530,129 @@ class StaticCache:
 
 _static_cache = StaticCache()
 
+# ---------------------------------------------------------------------------
+# fnOS 后端 API 调用（通过 Unix Socket）
+# ---------------------------------------------------------------------------
+_TRIM_SOCK = "/var/run/trim_open_gateway_apiscope.socket"
+
+def _call_trim_api(req_name, data=None):
+    """调用 fnOS 后端开放 API，返回响应中的 data 或 None"""
+    api_token = os.environ.get("TRIM_API_TOKEN", "")
+    if not api_token:
+        return None
+    body = json.dumps({
+        "req": req_name,
+        "appName": "qbittorrent",
+        "data": data or {},
+    })
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect(_TRIM_SOCK)
+        req = (
+            "POST /api/v1/trimapp HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            "Authorization: Bearer %s\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "%s"
+        ) % (api_token, len(body), body)
+        sock.sendall(req.encode())
+        resp = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            resp += chunk
+        sock.close()
+        header_end = resp.find(b"\r\n\r\n")
+        if header_end < 0:
+            return None
+        resp_body = resp[header_end + 4:]
+        result = json.loads(resp_body)
+        if result.get("code") == 0:
+            return result.get("data")
+        return None
+    except Exception:
+        return None
+
+def _set_conf_value(cfg, key, value):
+    """更新 qBittorrent.conf 中某键值（覆盖或新增），返回新配置文本"""
+    lines = cfg.splitlines()
+    out = []
+    section = ""
+    found = False
+    for line in lines:
+        if line.startswith("["):
+            section = line.strip().strip("[]")
+            out.append(line)
+            continue
+        if section in ("BitTorrent", "Preferences") and line.startswith(key + "="):
+            out.append("%s=%s" % (key, value))
+            found = True
+            continue
+        out.append(line)
+    if not found:
+        # 追加到合适位置
+        if cfg.strip().endswith("]") and "[BitTorrent]" in cfg:
+            # 简单追加到文件末尾
+            out.append("%s=%s" % (key, value))
+        else:
+            out.append("")
+            out.append("[BitTorrent]")
+            out.append("%s=%s" % (key, value))
+    return "\n".join(out)
+
+def _call_qbt_api(method, api_path, body=None):
+    """调用 qBittorrent WebUI API（LocalHostAuth=false，无需 Cookie）。
+    返回 (status, json_dict_or_text)。失败返回 (None, None)。"""
+    host = TARGET_HOST
+    port = INITIAL_PORT
+    try:
+        conn = HTTPConnection(host, port, timeout=15)
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        conn.request(method, api_path, body=body, headers=headers)
+        resp = conn.getresponse()
+        data = resp.read()
+        status = resp.status
+        conn.close()
+        try:
+            return status, json.loads(data)
+        except Exception:
+            return status, data.decode("utf-8", "replace")
+    except Exception:
+        return None, None
+
+
+def _set_qbt_save_path(new_path):
+    """通过 qBittorrent WebUI API 实时设置默认下载目录"""
+    from urllib.parse import urlencode
+    prefs = {
+        "save_path": new_path,
+        "temp_path": os.path.join(new_path, "temp"),
+    }
+    body = urlencode({"json": json.dumps(prefs)})
+    status, resp = _call_qbt_api("POST", "/api/v2/app/setPreferences", body=body)
+    return status == 200
+
+# HTML 首页缓存（单条目，缓存 / 和 /index.html 的注入后 HTML）
+_html_cache = {}
+_html_cache_lock = threading.Lock()
+
+def get_cached_html(path):
+    """获取缓存的注入后 HTML 页面"""
+    with _html_cache_lock:
+        return _html_cache.get(path)
+
+def set_cached_html(path, data):
+    """缓存注入后的 HTML 页面"""
+    with _html_cache_lock:
+        _html_cache[path] = data
+
+_HOME_PATHS = frozenset({'/', '/index.html'})
+
 
 def _is_static_cacheable(method, path):
     if method != 'GET':
@@ -295,6 +665,11 @@ def _is_static_cacheable(method, path):
     return path[idx + 1:].lower() in STATIC_EXTENSIONS
 
 
+def _is_home_path(path):
+    """判断是否为 HTML 首页入口"""
+    return path in _HOME_PATHS
+
+
 # ---------------------------------------------------------------------------
 # 解压缩工具
 # ---------------------------------------------------------------------------
@@ -304,8 +679,10 @@ def decompress(data, encoding):
             return gzip.decompress(data)
         elif encoding == 'deflate':
             return zlib.decompress(data)
-        elif encoding == 'br' and HAS_BROTLI:
-            return brotli.decompress(data)
+        elif encoding == 'br':
+            br = _get_brotli()
+            if br:
+                return br.decompress(data)
     except Exception as e:
         logging.warning("decompress(%s) failed: %s", encoding, e)
     return None
@@ -316,7 +693,7 @@ def decompress(data, encoding):
 # ---------------------------------------------------------------------------
 def rewrite_html(data):
     """注入 JS polyfill + 重写 src/href/action 绝对路径。"""
-    data = data.replace(b'</head>', INJECT_SCRIPT_B + b'</head>', 1)
+    data = data.replace(b'</head>', _get_inject_script_bytes() + b'</head>', 1)
     data = _RE_HTML_ATTR.sub(rb'\1=\2' + PREFIX.encode() + rb'/', data)
     return data
 
@@ -462,9 +839,16 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
     except Exception:
         pass
     downloaded = 0
+    start_time = time.time()
     try:
         with open(tmp, 'wb') as f:
             while True:
+                elapsed = time.time() - start_time
+                if elapsed > DOWNLOAD_TIMEOUT:
+                    resp.close()
+                    os.remove(tmp)
+                    return False, "下载超时 (已耗时 %ds，超过限制 %ds)" % (
+                        int(elapsed), DOWNLOAD_TIMEOUT)
                 chunk = resp.read(65536)
                 if not chunk:
                     break
@@ -616,6 +1000,89 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_api(self, path):
+        if path == "/api/download-path":
+            try:
+                save_path = ""
+                if CONFIG_PATH and os.path.exists(CONFIG_PATH):
+                    with open(CONFIG_PATH, 'r') as f:
+                        for line in f:
+                            m = re.match(r'(?:Session\\DefaultSavePath|Downloads\\SavePath)=(.*)', line)
+                            if m:
+                                save_path = m.group(1).strip()
+                                break
+                result = {"success": True, "path": save_path, "displayPath": save_path, "hasACL": True}
+                if save_path:
+                    # 路径转换：需要 language 参数
+                    try:
+                        display = _call_trim_api("trim.file.convertPath", {
+                            "path": [save_path],
+                            "language": "zh-CN",
+                        })
+                        if display and display.get("status") == 0:
+                            sem = display.get("result", [{}])[0].get("semanticPath", "")
+                            if sem:
+                                result["displayPath"] = sem
+                    except Exception:
+                        pass
+                    # 权限检查：需要 uid 参数，从请求头获取
+                    try:
+                        uid = self.headers.get("X-Trim-Userid", "")
+                        if uid:
+                            acl = _call_trim_api("trim.file.checkUserACL", {
+                                "uid": int(uid),
+                                "path": save_path,
+                            })
+                            if acl and isinstance(acl, list) and len(acl) > 0:
+                                item = acl[0]
+                                result["hasACL"] = bool(item.get("readable") or item.get("writable"))
+                    except Exception:
+                        pass
+                self._send_json(200, result)
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": str(e)})
+            return True
+
+        if path == "/api/set-save-path":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                if length <= 0:
+                    self._send_json(400, {"success": False, "error": "缺少请求体"})
+                    return True
+                req_body = self.rfile.read(length).decode("utf-8")
+                data = json.loads(req_body)
+                new_path = (data.get("path") or "").strip()
+                if not new_path:
+                    self._send_json(400, {"success": False, "error": "路径不能为空"})
+                    return True
+                if not os.path.isdir(new_path):
+                    try:
+                        os.makedirs(new_path, exist_ok=True)
+                    except Exception:
+                        self._send_json(400, {"success": False, "error": "目录不存在且无法创建: %s" % new_path})
+                        return True
+                if not os.path.isdir(new_path):
+                    self._send_json(400, {"success": False, "error": "目录不存在: %s" % new_path})
+                    return True
+                # 更新配置文件（持久化，重启后仍生效）
+                if CONFIG_PATH and os.path.exists(CONFIG_PATH):
+                    with open(CONFIG_PATH, 'r') as f:
+                        cfg = f.read()
+                    cfg_new = _set_conf_value(cfg, "Session\\DefaultSavePath", new_path)
+                    cfg_new = _set_conf_value(cfg_new, "Session\\TempPath", new_path + "/temp/")
+                    with open(CONFIG_PATH, 'w') as f:
+                        f.write(cfg_new)
+                # 调用 qBittorrent API 实时生效（无需重启）
+                qbt_ok = _set_qbt_save_path(new_path)
+                self._send_json(200, {
+                    "success": True,
+                    "path": new_path,
+                    "applied": qbt_ok,
+                    "note": "" if qbt_ok else "配置已保存，但实时应用失败，可能需重启应用生效",
+                })
+            except Exception as e:
+                self._send_json(500, {"success": False, "error": str(e)})
+            return True
+
         if path == "/api/update/check":
             try:
                 global _cached_version
@@ -726,8 +1193,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         path = self._strip_prefix()
 
-        # API 路由
-        if path.startswith("/api/update/"):
+        # API 路由（代理自定义 API，不走后端转发）
+        if path.startswith("/api/"):
             if self._handle_api(path):
                 return
 
@@ -790,8 +1257,35 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(c_body)
                 else:
-                    # HEAD: 不返回 body，但保留 Content-Length
                     self.send_header("Content-Length", str(len(c_body)))
+                    self.end_headers()
+                if pool:
+                    pool.release(conn)
+                else:
+                    conn.close()
+                return
+
+        # HTML 首页缓存命中检查（注入后的完整 HTML）
+        is_home = _is_home_path(path)
+        if is_home:
+            cached_html = get_cached_html(path)
+            if cached_html is not None:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header(
+                    "Content-Security-Policy",
+                    "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; "
+                    "frame-ancestors *; "
+                    "img-src 'self' data: blob:; "
+                    "style-src 'self' 'unsafe-inline';"
+                )
+                self.send_header("Cache-Control", "no-cache")
+                if not is_head:
+                    self.send_header("Content-Length", str(len(cached_html)))
+                    self.end_headers()
+                    self.wfile.write(cached_html)
+                else:
+                    self.send_header("Content-Length", str(len(cached_html)))
                     self.end_headers()
                 if pool:
                     pool.release(conn)
@@ -872,6 +1366,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     if raw is not None:
                         data = raw
                 data = rewrite_html(data)
+                # 缓存首页 HTML（避免每次打开都重新从后端获取和重写）
+                if is_home and 200 <= resp.status < 300:
+                    set_cached_html(path, data)
                 # 添加 CSP 允许 iframe 嵌入，同时提供 XSS 防护
                 self.send_header(
                     "Content-Security-Policy",
@@ -1039,7 +1536,8 @@ class ThreadedUnixHTTPServer(http.server.HTTPServer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._executor = concurrent.futures.ThreadPoolExecutor(
+        cf = _get_concurrent_futures()
+        self._executor = cf.ThreadPoolExecutor(
             max_workers=20, thread_name_prefix="proxy"
         )
 

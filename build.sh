@@ -230,7 +230,6 @@ cp -r "${PROJECT_DIR}/cmd/"* "${BUILD_DIR}/cmd/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/config/"* "${BUILD_DIR}/config/" 2>/dev/null || true
 cp -r "${PROJECT_DIR}/wizard/"* "${BUILD_DIR}/wizard/" 2>/dev/null || true
 sed "s/^version\s*=.*/version = ${APP_VERSION}/" "${PROJECT_DIR}/manifest" > "${BUILD_DIR}/manifest"
-cp "${PROJECT_DIR}/LICENSE" "${BUILD_DIR}/" 2>/dev/null || true
 cp "${PROJECT_DIR}/ICON.PNG" "${BUILD_DIR}/" 2>/dev/null || true
 cp "${PROJECT_DIR}/ICON_256.PNG" "${BUILD_DIR}/" 2>/dev/null || true
 if [ -d "${PROJECT_DIR}/app/ui/config" ]; then cp -r "${PROJECT_DIR}/app/ui/config" "${BUILD_DIR}/app/ui/"; fi

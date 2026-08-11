@@ -179,13 +179,16 @@ jobs:
           chmod +x fnpack
 
           echo "Verifying required files..."
-          for file in manifest ICON.PNG ICON_256.PNG LICENSE README.md app cmd config wizard; do
+          for file in manifest ICON.PNG ICON_256.PNG README.md app cmd config wizard; do
             if [ ! -e "$file" ]; then
               echo "ERROR: Required file/directory '$file' not found!"
               exit 1
             fi
             echo "  ✓ $file"
           done
+
+          echo "Removing LICENSE from package (not bundled)..."
+          rm -f LICENSE
 
           echo "Running fnpack build..."
           ./fnpack build .

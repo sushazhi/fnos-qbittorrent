@@ -131,7 +131,7 @@ fi
 # 启动服务
 echo ""
 
-# 使用绝对路径启动
+# 使用 main 脚本启动（后台启动守护进程，脚本快速退出，子进程被 init 接管）
 if [ -x "$MAIN_SCRIPT" ]; then
     "$MAIN_SCRIPT" start
     EXIT_CODE=$?

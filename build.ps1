@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   qBittorrent for fnOS Local Build Script
 
@@ -82,38 +82,11 @@ $verParts = $APP_VERSION -split '\.'
 $QBT_VER = ($verParts[0..2] -join '.')
 Write-Host "qBittorrent-nox version: $QBT_VER (from manifest $APP_VERSION)" -ForegroundColor Cyan
 
-# Get latest qBittorrent-nox release matching QBT_VER
-Write-Host "Fetching latest qBittorrent-nox release for $QBT_VER..." -ForegroundColor Cyan
-try {
-    $qbtReleases = Invoke-RestMethod -Uri $QBT_API -UseBasicParsing
-    $qbtPattern = "^release-${QBT_VER}_v"
-    $matchingRelease = $qbtReleases | Where-Object { $_.tag_name -match $qbtPattern } | Select-Object -First 1
-    if (-not $matchingRelease) {
-        Write-Host "ERROR: No qBittorrent-nox release found for version $QBT_VER" -ForegroundColor Red
-        exit 1
-    }
-    $QBT_RELEASE_TAG = $matchingRelease.tag_name
-    Write-Host "qBittorrent-nox release: $QBT_RELEASE_TAG" -ForegroundColor Cyan
-} catch {
-    Write-Host "ERROR: Failed to fetch qBittorrent-nox releases" -ForegroundColor Red
-    exit 1
-}
-
 # Proxy configuration
-$MAIN_PROXY = "https://gh-proxy.org/"
+$MAIN_PROXY = "https://gh-proxy.com/"
 $BINARY_PROXY = "https://ghfast.top/"
 
-# Get latest VueTorrent version
-Write-Host "Fetching latest VueTorrent version..." -ForegroundColor Cyan
-try {
-    $vueRelease = Invoke-RestMethod -Uri $VUE_TORRENT_API -UseBasicParsing
-    $VUE_VER = $vueRelease.tag_name -replace '^v', ''
-    Write-Host "VueTorrent version: $VUE_VER" -ForegroundColor Cyan
-} catch {
-    Write-Host "ERROR: Failed to fetch VueTorrent version" -ForegroundColor Red
-    exit 1
-}
-
+# ===== 版本缓存函数（须在使用前定义） =====
 function Get-VersionInfo {
     if (Test-Path $VERSION_FILE) {
         try {
@@ -128,7 +101,6 @@ function Get-VersionInfo {
 function Save-VersionInfo {
     param($Component, $Version)
     $versions = Get-VersionInfo
-    # Convert PSCustomObject to Hashtable if needed
     if ($versions -is [System.Management.Automation.PSCustomObject]) {
         $hash = @{}
         $versions.PSObject.Properties | ForEach-Object { $hash[$_.Name] = $_.Value }
@@ -143,6 +115,88 @@ function Test-VersionMatch {
     $versions = Get-VersionInfo
     return ($versions.$Component -eq $ExpectedVersion)
 }
+
+# 缓存优先：读取本地已缓存版本号
+$cachedVersions = Get-VersionInfo
+
+# ===== qBittorrent-nox release tag：获取网络最新版本并与缓存比对 =====
+$cachedQbtTag = $cachedVersions."qbittorrent-nox_$ARCH"
+$QBT_RELEASE_TAG = ""
+$qbtNetOk = $false
+
+if ($ForceDownload) {
+    Write-Host "ForceDownload: 强制重新获取并下载" -ForegroundColor Yellow
+} else {
+    Write-Host "Fetching latest qBittorrent-nox release for $QBT_VER..." -ForegroundColor Cyan
+    try {
+        $qbtReleases = Invoke-RestMethod -Uri $QBT_API -UseBasicParsing -TimeoutSec 15
+        $qbtPattern = "^release-${QBT_VER}_v"
+        $matchingRelease = $qbtReleases | Where-Object { $_.tag_name -match $qbtPattern } | Select-Object -First 1
+        if ($matchingRelease) {
+            $QBT_RELEASE_TAG = $matchingRelease.tag_name
+            $qbtNetOk = $true
+        }
+    } catch {
+        Write-Host "  (网络获取失败，回退缓存)" -ForegroundColor Yellow
+    }
+}
+
+if ($qbtNetOk) {
+    if ($cachedQbtTag -eq $QBT_RELEASE_TAG) {
+        Write-Host "qBittorrent-nox: 网络最新($QBT_RELEASE_TAG)与缓存一致，使用缓存" -ForegroundColor Green
+    } else {
+        if ($cachedQbtTag) {
+            Write-Host "qBittorrent-nox: 缓存($cachedQbtTag)已过期，更新为 $QBT_RELEASE_TAG" -ForegroundColor Yellow
+        } else {
+            Write-Host "qBittorrent-nox: 无缓存，使用 $QBT_RELEASE_TAG" -ForegroundColor Cyan
+        }
+    }
+} elseif ($cachedQbtTag) {
+    # 网络失败，回退缓存
+    $QBT_RELEASE_TAG = $cachedQbtTag
+    Write-Host "qBittorrent-nox: 网络不可用，回退缓存 $QBT_RELEASE_TAG" -ForegroundColor Yellow
+} else {
+    Write-Host "ERROR: No qBittorrent-nox release found for version $QBT_VER" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  -> qBittorrent-nox release: $QBT_RELEASE_TAG" -ForegroundColor Cyan
+
+# ===== VueTorrent 版本：获取网络最新版本并与缓存比对 =====
+$cachedVueVer = $cachedVersions.vuetorrent
+$VUE_VER = ""
+$vueNetOk = $false
+
+if ($ForceDownload) {
+    # 强制模式下直接走网络
+} else {
+    Write-Host "Fetching latest VueTorrent version..." -ForegroundColor Cyan
+    try {
+        $vueRelease = Invoke-RestMethod -Uri $VUE_TORRENT_API -UseBasicParsing -TimeoutSec 15
+        $VUE_VER = $vueRelease.tag_name -replace '^v', ''
+        $vueNetOk = $true
+    } catch {
+        Write-Host "  (网络获取失败，回退缓存)" -ForegroundColor Yellow
+    }
+}
+
+if ($vueNetOk) {
+    if ($cachedVueVer -eq $VUE_VER) {
+        Write-Host "VueTorrent: 网络最新($VUE_VER)与缓存一致，使用缓存" -ForegroundColor Green
+    } else {
+        if ($cachedVueVer) {
+            Write-Host "VueTorrent: 缓存($cachedVueVer)已过期，更新为 $VUE_VER" -ForegroundColor Yellow
+        } else {
+            Write-Host "VueTorrent: 无缓存，使用 $VUE_VER" -ForegroundColor Cyan
+        }
+    }
+} elseif ($cachedVueVer) {
+    $VUE_VER = $cachedVueVer
+    Write-Host "VueTorrent: 网络不可用，回退缓存 $VUE_VER" -ForegroundColor Yellow
+} else {
+    Write-Host "ERROR: Failed to fetch VueTorrent version" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  -> VueTorrent version: $VUE_VER" -ForegroundColor Cyan
 
 function Get-File {
     param($Url, $OutFile, $Description, $Component, $Version, $UseBinaryProxy = $false)
@@ -159,21 +213,31 @@ function Get-File {
 
     Write-Host "  Downloading $Description..." -ForegroundColor Yellow
 
-    # Try MAIN_PROXY first (10s timeout, no retry)
+    # Try MAIN_PROXY first
     $proxyUrl = $MAIN_PROXY + $Url
-    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "10", "--max-time", "10", "-s" -NoNewWindow -Wait -PassThru
+    Write-Host "    Trying $MAIN_PROXY ..." -ForegroundColor Gray
+    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "10", "--max-time", "120", "--retry", "2", "--retry-delay", "3", "-s" -NoNewWindow -Wait -PassThru
     if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
         Write-Host "  Downloaded $Description (via $MAIN_PROXY)" -ForegroundColor Green
         Save-VersionInfo -Component $Component -Version $Version
         return $true
     }
 
-    # MAIN_PROXY timed out, switch to BINARY_PROXY
-    Write-Host "  MAIN_PROXY timed out, switching to BINARY_PROXY..." -ForegroundColor Yellow
+    # MAIN_PROXY failed, try BINARY_PROXY
+    Write-Host "    Trying $BINARY_PROXY ..." -ForegroundColor Gray
     $proxyUrl = $BINARY_PROXY + $Url
-    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "30", "--max-time", "300", "--retry", "3", "--retry-delay", "5" -NoNewWindow -Wait -PassThru
+    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $proxyUrl, "--connect-timeout", "10", "--max-time", "120", "--retry", "2", "--retry-delay", "3", "-s" -NoNewWindow -Wait -PassThru
     if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
         Write-Host "  Downloaded $Description (via $BINARY_PROXY)" -ForegroundColor Green
+        Save-VersionInfo -Component $Component -Version $Version
+        return $true
+    }
+
+    # Both proxies failed, try direct download
+    Write-Host "    Proxies failed, trying direct download..." -ForegroundColor Gray
+    $p = Start-Process -FilePath "curl" -ArgumentList "-L", "-o", $OutFile, $Url, "--connect-timeout", "15", "--max-time", "180", "--retry", "2", "--retry-delay", "5", "-s" -NoNewWindow -Wait -PassThru
+    if ($p.ExitCode -eq 0 -and (Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
+        Write-Host "  Downloaded $Description (direct)" -ForegroundColor Green
         Save-VersionInfo -Component $Component -Version $Version
         return $true
     }
@@ -244,7 +308,7 @@ Copy-Item "$PROJECT_DIR\wizard\*" "$BUILD_DIR\wizard\" -Recurse -Force
 $manifestLines = Get-Content $MANIFEST_FILE -Raw -Encoding UTF8
 $manifestLines = $manifestLines -replace "(?m)^version\s*=.*", "version = $APP_VERSION"
 [System.IO.File]::WriteAllText("$BUILD_DIR\manifest", $manifestLines, [System.Text.Encoding]::UTF8)
-@("LICENSE", "ICON.PNG", "ICON_256.PNG") | ForEach-Object {
+@("ICON.PNG", "ICON_256.PNG") | ForEach-Object {
     if (Test-Path "$PROJECT_DIR\$_") { Copy-Item "$PROJECT_DIR\$_" "$BUILD_DIR\" -Force }
 }
 if (Test-Path "$PROJECT_DIR\app\ui\config") { Copy-Item "$PROJECT_DIR\app\ui\config" "$BUILD_DIR\app\ui\" -Force }

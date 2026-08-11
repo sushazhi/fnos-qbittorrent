@@ -127,6 +127,12 @@ start)
 
     rotate_logs
 
+    # 清理 qBittorrent 内部日志的冗余备份文件（无限递增，无数量上限）
+    QB_LOG_DIR="${DATA_DIR}/qBittorrent/data/logs"
+    if [ -d "$QB_LOG_DIR" ]; then
+        find "$QB_LOG_DIR" -name "qbittorrent.log.bak*" -type f -delete
+    fi
+
     if [ ! -f "$BIN_DIR/qbittorrent-nox" ]; then
         echo "错误：未找到可执行文件 qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"
         exit 1
@@ -153,6 +159,8 @@ WebUI\Username=admin
 WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
+[Application]
+FileLogger\Backup=false
 EOF
     fi
 
@@ -188,6 +196,11 @@ EOF
     PID=$!
     echo $PID > "$PID_FILE"
 
+    # 尽早启动代理，与 qBittorrent 并行初始化
+    # 代理会等待 qBittorrent WebUI 就绪后才接受请求
+    start_proxy &
+    PROXY_PID=$!
+
     # 短等待后检测进程是否存活（最长 3s，按 0.2s 间隔检测）
     elapsed=0
     while [ $elapsed -lt 30 ]; do
@@ -220,7 +233,10 @@ EOF
 
     echo "${APP_NAME} started (PID: $PID)"
 
-    start_proxy
+    # 等待 start_proxy 子 shell 完成（不 wait qbittorrent-nox 守护进程）
+    if [ -n "$PROXY_PID" ]; then
+        wait $PROXY_PID 2>/dev/null || true
+    fi
 
     exit 0
     ;;

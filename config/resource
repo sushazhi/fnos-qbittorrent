@@ -1,4 +1,10 @@
 {
+    "api-scope": [
+        "trim.file.path",
+        "trim.file.userAcl",
+        "trim.file.userAccess",
+        "trim.file.sharedAccess"
+    ],
     "data-share": {
         "shares": [
             {

@@ -164,6 +164,8 @@ WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
+[Application]
+FileLogger\Backup=false
 CFGEOF
             echo "VueTorrent configured (gateway mode)"
             ;;
@@ -181,6 +183,8 @@ WebUI\Password_PBKDF2=${OLD_PASS}
 WebUI\ClickjackingProtection=false
 WebUI\CSRFProtection=false
 WebUI\AlternativeUIEnabled=false
+[Application]
+FileLogger\Backup=false
 CFGEOF
             echo "Native UI configured (gateway mode)"
             ;;
