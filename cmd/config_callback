@@ -28,7 +28,7 @@ case "$UI_TYPE" in
         ALT_UI_ENABLED="true"
         ;;
 esac
-WEBUI_ADDRESS="127.0.0.1"
+WEBUI_ADDRESS="0.0.0.0"
 LOCALHOST_AUTH="false"
 
 # 管理员用户名

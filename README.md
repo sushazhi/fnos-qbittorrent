@@ -115,9 +115,35 @@ chmod +x build.sh
 |------|--------|
 | 系统版本 | fnOS v1.1.3104+ |
 | 访问地址 | `http://<NAS_IP>:5666/app/qbittorrent/` |
-| LocalHostAuth | `false`（网关模式跳过localhost认证） |
+| WebUI 监听地址 | `0.0.0.0`（所有接口） |
+| WebUI 端口 | `8080` |
+| LocalHostAuth | `false`（允许从非本机发起认证） |
 
 > 🔓 网关模式下无需手动登录，统一网关已保证用户身份认证
+
+### 🌐 WebUI / API 外部访问
+
+qBittorrent WebUI 默认监听 `0.0.0.0`（所有接口），除 fnOS 网关入口外，也可通过局域网地址直接访问 WebUI 及 WebUI API：
+
+```
+http://<NAS_IP>:8080/               # WebUI
+http://<NAS_IP>:8080/api/v2/...     # WebUI API（如 auth/login、torrents/info 等）
+```
+
+- 网关代理（`gateway-proxy.py`）从本机 `127.0.0.1:8080` 转发，改动监听地址不影响 fnOS 桌面 iframe 访问。
+- WebUI/API 仍受 qBittorrent 用户名+密码保护（SSO 模式下为随机内部凭证），需先通过 `auth/login` 获取 cookie 才能调用 API。
+- 如需脚本/自动化调用，可参考 [qBittorrent WebUI API 文档](https://github.com/qbittorrent/qBittorrent/wiki/WebUI-API-(qBittorrent-5.0))，例如：
+
+```bash
+# 登录获取 cookie
+curl -s -c cookies.txt -d "username=<用户>&password=<密码>" \
+  "http://<NAS_IP>:8080/api/v2/auth/login"
+
+# 使用 cookie 调用 API
+curl -s -b cookies.txt "http://<NAS_IP>:8080/api/v2/torrents/info"
+```
+
+> ⚠️ **安全提醒**：监听所有接口意味着 WebUI 会暴露到局域网，务必使用强密码。若仅需本机/网关访问，可手动把 `qBittorrent.conf` 中 `WebUI\Address` 改回 `127.0.0.1` 后重启应用。
 
 ---
 

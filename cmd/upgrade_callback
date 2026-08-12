@@ -71,7 +71,7 @@ if [ -f "$CONFIG_FILE" ]; then
     TMP_UP=$(mktemp)
     awk -v root="${TRIM_APPDEST}/ui/vuetorrent" '
         /^WebUI\\RootFolder=/ { print "WebUI\\RootFolder=" root; next; }
-        /^WebUI\\Address=/ { print "WebUI\\Address=127.0.0.1"; next; }
+        /^WebUI\\Address=/ { print "WebUI\\Address=0.0.0.0"; next; }
         /^WebUI\\LocalHostAuth=/ { print "WebUI\\LocalHostAuth=false"; next; }
         { print }
     ' "$CONFIG_FILE" > "$TMP_UP"
@@ -104,7 +104,7 @@ Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
 Session\TempPath=/vol1/@appshare/qbittorrent/temp/
 [Preferences]
 General\Locale=zh_CN
-WebUI\Address=127.0.0.1
+WebUI\Address=0.0.0.0
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
@@ -135,7 +135,7 @@ Session\DefaultSavePath=/vol1/@appshare/qbittorrent/downloads/
 Session\TempPath=/vol1/@appshare/qbittorrent/temp/
 [Preferences]
 General\Locale=zh_CN
-WebUI\Address=127.0.0.1
+WebUI\Address=0.0.0.0
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
