@@ -243,6 +243,7 @@ _INJECT_SCRIPT_TEMPLATE = (
       'function $off(evt,cb){var l=listeners[evt];if(l){var i=l.indexOf(cb);if(i>-1)l.splice(i,1);}}'
       'return {'
         'get ready(){return connected;},'
+        'connect:connect,'
         'isWeb:true,'
         'has:has,'
         'call:call,'
@@ -258,7 +259,7 @@ _INJECT_SCRIPT_TEMPLATE = (
       '};'
     '})();'
     'var sdk=__qbSdk;'
-    'setTimeout(function(){connect();},0);'
+    'setTimeout(function(){sdk.connect();},0);'
     ''
     '/* ===== 1. 主题/语言监听 ===== */'
     'sdk.$on("os/theme",function(t){document.documentElement.setAttribute("data-theme",t);});'
@@ -506,12 +507,19 @@ class ConnectionPool:
 
 
 # ---------------------------------------------------------------------------
-# 静态资源缓存（LRU）
+# 静态资源缓存（LRU，按总字节数控制，避免大文件撑爆内存）
 # ---------------------------------------------------------------------------
+# 单个资源超过该字节数则不入缓存（VueTorrent 大 JS/CSS 无需缓存）
+_MAX_SINGLE_CACHE_BYTES = 512 * 1024  # 512 KB
+# 缓存总字节上限
+_MAX_CACHE_TOTAL_BYTES = 16 * 1024 * 1024  # 16 MB
+
+
 class StaticCache:
-    def __init__(self, max_size=30):
+    def __init__(self, max_bytes=_MAX_CACHE_TOTAL_BYTES):
         self._cache = OrderedDict()
-        self._max = max_size
+        self._max_bytes = max_bytes
+        self._used_bytes = 0
         self._lock = threading.Lock()
 
     def get(self, key):
@@ -522,9 +530,20 @@ class StaticCache:
             return None
 
     def set(self, key, status, headers, body):
+        if body is None or len(body) > _MAX_SINGLE_CACHE_BYTES:
+            # 空响应或超大资源不入缓存（按需直转，不占用内存）
+            return
+        size = len(body)
         with self._lock:
-            if len(self._cache) >= self._max:
-                self._cache.popitem(last=False)
+            existing = self._cache.get(key)
+            if existing is not None:
+                # 覆盖已有条目，先回收其占用的字节数
+                self._used_bytes -= len(existing[2])
+            self._used_bytes += size
+            # 逐出最旧条目，直到满足总字节上限（至少保留当前条目）
+            while self._used_bytes > self._max_bytes and len(self._cache) > 0:
+                _, (_, _, old_body) = self._cache.popitem(last=False)
+                self._used_bytes -= len(old_body)
             self._cache[key] = (status, headers, body)
 
 
@@ -970,6 +989,19 @@ def _tunnel_sock(client_sock, backend_sock):
             pass
 
 
+def _stream_copy(src, dst, chunk_size=65536):
+    """分块拷贝响应 body，避免一次性读入内存。"""
+    while True:
+        chunk = src.read(chunk_size)
+        if not chunk:
+            break
+        dst.write(chunk)
+    try:
+        dst.flush()
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # 代理请求处理器
 # ---------------------------------------------------------------------------
@@ -1386,9 +1418,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                     self.send_header("Content-Length", str(len(data)))
                     self.end_headers()
             else:
-                data = resp.read()
-                # 缓存静态资源
                 if cacheable and 200 <= resp.status < 300:
+                    # 静态资源：读全并缓存（缓存层会按字节上限/单文件上限自动淘汰或跳过）
+                    data = resp.read()
                     ch = [
                         (k, v) for k, v in all_resp_headers
                         if k.lower() not in (
@@ -1397,13 +1429,41 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                         )
                     ]
                     _static_cache.set(cache_key, resp.status, ch, data)
-                if not is_head:
-                    self.send_header("Content-Length", str(len(data)))
-                    self.end_headers()
-                    self.wfile.write(data)
+                    if not is_head:
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
+                        self.wfile.write(data)
+                    else:
+                        self.send_header("Content-Length", str(len(data)))
+                        self.end_headers()
                 else:
-                    self.send_header("Content-Length", str(len(data)))
-                    self.end_headers()
+                    # 动态 API 响应 / 下载等：流式分块转发，避免一次性读入内存造成峰值占用。
+                    # 后端无 Content-Length 时使用 chunked 编码。
+                    content_length = resp.getheader("Content-Length")
+                    if not is_head:
+                        if content_length:
+                            self.send_header("Content-Length", content_length)
+                            self.end_headers()
+                            _stream_copy(resp, self.wfile)
+                        else:
+                            # 无长度信息：以 chunked 形式转发
+                            self.send_header("Transfer-Encoding", "chunked")
+                            self.end_headers()
+                            while True:
+                                chunk = resp.read(65536)
+                                if not chunk:
+                                    self.wfile.write(b"0\r\n\r\n")
+                                    break
+                                self.wfile.write(
+                                    b"%x\r\n" % len(chunk) + chunk + b"\r\n"
+                                )
+                    else:
+                        # HEAD：仅透传长度头（不读 body）
+                        if content_length:
+                            self.send_header("Content-Length", content_length)
+                            self.end_headers()
+                        else:
+                            self.end_headers()
         except Exception:
             logging.error("unhandled in do_request %s %s:\n%s",
                           self.command, path, traceback.format_exc())
@@ -1537,8 +1597,9 @@ class ThreadedUnixHTTPServer(http.server.HTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         cf = _get_concurrent_futures()
+        # 并发上限按实际 WebUI 使用量收敛（20 → 8），显著降低线程栈虚拟内存与调度开销
         self._executor = cf.ThreadPoolExecutor(
-            max_workers=20, thread_name_prefix="proxy"
+            max_workers=8, thread_name_prefix="proxy"
         )
 
     def server_bind(self):
@@ -1581,6 +1642,13 @@ if __name__ == "__main__":
     if not SOCK_PATH:
         logging.error("Usage: gateway-proxy.py <socket_path> <target_host> <initial_port> [config_path]")
         sys.exit(1)
+
+    # 降低线程栈大小（默认 8MB → 256KB），8 个线程合计节省约 62MB 虚拟内存。
+    # 需在创建 ThreadPoolExecutor 之前调用。请求处理为轻量 IO 转发，256KB 足够。
+    try:
+        threading.stack_size(256 * 1024)
+    except (ValueError, RuntimeError):
+        pass  # 平台不支持时忽略
 
     # 初始化连接池
     ProxyHandler._conn_pool = ConnectionPool(TARGET_HOST, INITIAL_PORT, maxsize=10, timeout=30)
