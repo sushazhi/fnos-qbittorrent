@@ -7,36 +7,28 @@
         "helpText": "修改应用配置参数，保存后将重启应用使配置生效"
       },
       {
+        "type": "tips",
+        "helpText": "✅ <b>统一网关免密：</b>默认登录 fnOS 后即可直接打开，无需输入账号密码"
+      },
+      {
+        "type": "tips",
+        "helpText": "⚠️ <b>可选高级设置：</b>如需手动设置 WebUI 账号密码（用于非网关的远程访问等），可在此填写；留空则保持当前凭证"
+      },
+      {
         "type": "text",
         "field": "wizard_username",
-        "label": "管理员用户名",
-        "initValue": "admin",
-        "rules": [
-          {
-            "required": true,
-            "message": "请设置管理员用户名"
-          },
-          {
-            "minLength": 1,
-            "message": "用户名不能为空"
-          }
-        ]
+        "label": "WebUI 用户名（可选，留空保持不变）",
+        "initValue": ""
       },
       {
         "type": "password",
         "field": "wizard_password",
-        "label": "管理员密码",
-        "initValue": "",
-        "rules": [
-          {
-            "minLength": 6,
-            "message": "密码至少6位"
-          }
-        ]
+        "label": "WebUI 密码（可选，留空保持不变）",
+        "initValue": ""
       },
       {
         "type": "tips",
-        "helpText": "🔑 密码留空表示不修改，将保留当前密码"
+        "helpText": "🔑 仅在需要手动管理 WebUI 凭证时填写；SSO 网关免密模式下通常无需设置"
       },
       {
         "type": "radio",

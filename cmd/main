@@ -142,9 +142,18 @@ start)
     fi
 
     if [ ! -f "$CONFIG_FILE" ]; then
-        # 首次启动默认凭证（仅当未通过安装向导创建配置文件时的回退）
-        # 正常安装流程中，install_callback 已通过向导密码创建配置文件
-        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+        # 首次启动兜底：动态生成随机内部凭证（SSO 网关免密）
+        # 正常安装流程中，install_callback 已创建配置；此处仅作极端兜底，绝不使用公开默认密码
+        BOOT_PASS_HASH=''
+        BOOT_RANDOM_PASS=$(head -c 24 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'a-zA-Z0-9' | head -c 24)
+        if [ -n "$BOOT_RANDOM_PASS" ] && [ -f "$BIN_DIR/qbt_password.py" ]; then
+            BOOT_PASS_HASH=$(echo "$BOOT_RANDOM_PASS" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+        fi
+        if [ -z "$BOOT_PASS_HASH" ]; then
+            echo "错误：无法生成 qBittorrent 内部凭证" > "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+        unset BOOT_RANDOM_PASS
 
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
@@ -156,12 +165,13 @@ WebUI\Address=127.0.0.1
 WebUI\Port=${WEBUI_PORT}
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
+WebUI\Password_PBKDF2=${BOOT_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 [Application]
 FileLogger\Backup=false
 EOF
+        unset BOOT_PASS_HASH
     fi
 
     SAVE_PATH=$(grep -E "(Session\\\\DefaultSavePath|Downloads\\\\SavePath)=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2-)

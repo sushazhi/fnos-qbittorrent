@@ -21,53 +21,19 @@
     ]
   },
   {
-    "stepTitle": "🔐 管理员账号（可跳过）",
+    "stepTitle": "🔐 免密登录（统一网关）",
     "items": [
       {
         "type": "tips",
-        "helpText": "设置 qBittorrent WebUI 的管理员登录用户名和密码"
+        "helpText": "✅ <b>自动免密：</b>应用已接入 fnOS 统一网关，登录 fnOS 后即可直接打开 qBittorrent，无需输入账号密码"
       },
       {
         "type": "tips",
-        "helpText": "⏭️ <b>可跳过：</b>重装/升级时若已存在配置，留空用户名和密码将<b>保留原有账号信息</b>"
-      },
-      {
-        "type": "text",
-        "field": "wizard_username",
-        "label": "管理员用户名（留空保留已有）",
-        "initValue": "",
-        "rules": [
-          {
-            "minLength": 1,
-            "message": "用户名不能为空"
-          }
-        ]
-      },
-      {
-        "type": "password",
-        "field": "wizard_password",
-        "label": "管理员密码（留空保留已有）",
-        "rules": [
-          {
-            "minLength": 6,
-            "message": "密码长度至少6位"
-          }
-        ]
-      },
-      {
-        "type": "password",
-        "field": "wizard_password_confirm",
-        "label": "确认密码",
-        "rules": [
-          {
-            "equalTo": "wizard_password",
-            "message": "两次输入的密码不一致"
-          }
-        ]
+        "helpText": "🛡️ <b>自动凭证：</b>安装时系统会自动生成随机内部凭证，无需手动设置，也不会使用公开默认密码"
       },
       {
         "type": "tips",
-        "helpText": "🔑 用户名或密码留空时，将保留已有配置中的对应项<br>⚠️ 首次安装（无已有配置）时，请务必设置用户名和密码"
+        "helpText": "💡 <b>如需手动管理：</b>安装后可在 系统设置 - 应用 - qBittorrent - 设置 中修改 WebUI 用户名/密码"
       }
     ]
   },

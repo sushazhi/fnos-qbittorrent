@@ -86,8 +86,17 @@ else
     if [ "$CONFIG_EXISTS" = true ]; then
         echo "发现现有数据但无配置文件，创建默认配置"
         mkdir -p "$CONFIG_DIR"
-        # 默认凭证（仅当数据异常时的回退，正常升级不会触发）
-        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+        # 随机内部凭证（SSO 网关免密，绝不使用公开默认密码）
+        UPGRADE_PASS_HASH=''
+        UPGRADE_RANDOM_PASS=$(head -c 24 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'a-zA-Z0-9' | head -c 24)
+        if [ -n "$UPGRADE_RANDOM_PASS" ] && [ -f "$BIN_DIR/qbt_password.py" ]; then
+            UPGRADE_PASS_HASH=$(echo "$UPGRADE_RANDOM_PASS" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+        fi
+        if [ -z "$UPGRADE_PASS_HASH" ]; then
+            echo "错误：无法生成 qBittorrent 内部凭证" > "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+        unset UPGRADE_RANDOM_PASS
 
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
@@ -99,16 +108,26 @@ WebUI\Address=127.0.0.1
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
+WebUI\Password_PBKDF2=${UPGRADE_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
+        unset UPGRADE_PASS_HASH
         echo "默认配置已创建"
     else
         # 没有数据也没有备份：创建默认配置
         echo "无备份且无现有数据，创建默认配置"
         mkdir -p "$CONFIG_DIR"
-        DEFAULT_PASS_HASH='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+        UPGRADE_PASS_HASH=''
+        UPGRADE_RANDOM_PASS=$(head -c 24 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'a-zA-Z0-9' | head -c 24)
+        if [ -n "$UPGRADE_RANDOM_PASS" ] && [ -f "$BIN_DIR/qbt_password.py" ]; then
+            UPGRADE_PASS_HASH=$(echo "$UPGRADE_RANDOM_PASS" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+        fi
+        if [ -z "$UPGRADE_PASS_HASH" ]; then
+            echo "错误：无法生成 qBittorrent 内部凭证" > "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+        unset UPGRADE_RANDOM_PASS
 
         cat > "$CONFIG_FILE" << EOF
 [BitTorrent]
@@ -120,10 +139,11 @@ WebUI\Address=127.0.0.1
 WebUI\Port=8080
 WebUI\LocalHostAuth=false
 WebUI\Username=admin
-WebUI\Password_PBKDF2=${DEFAULT_PASS_HASH}
+WebUI\Password_PBKDF2=${UPGRADE_PASS_HASH}
 WebUI\AlternativeUIEnabled=true
 WebUI\RootFolder=${TRIM_APPDEST}/ui/vuetorrent
 EOF
+        unset UPGRADE_PASS_HASH
         echo "默认配置已创建"
     fi
 fi

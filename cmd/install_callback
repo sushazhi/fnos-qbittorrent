@@ -17,7 +17,7 @@ if [ -f "$BIN_DIR/qbt_password.py" ]; then
     chmod +x "$BIN_DIR/qbt_password.py" 2>/dev/null || true
 fi
 
-# 生成密码哈希（如果用户提供了密码）
+# 生成密码哈希（优先用户提供的密码；否则自动生成强随机内部凭证，避免使用公开默认密码）
 # 通过 stdin 传入密码（避免在 ps 中暴露命令行参数）
 PASSWORD_HASH=""
 if [ -n "${wizard_password:-}" ]; then
@@ -28,6 +28,20 @@ if [ -n "${wizard_password:-}" ]; then
     else
         echo "Password hash generated successfully"
     fi
+fi
+
+# 统一网关模式：无用户密码时自动生成随机强密码（SSO 免密，随机凭证仅作安全兜底）
+if [ -z "$PASSWORD_HASH" ]; then
+    RANDOM_PASS=$(head -c 24 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'a-zA-Z0-9' | head -c 24)
+    if [ -z "$RANDOM_PASS" ]; then
+        RANDOM_PASS="${TRIM_API_TOKEN:-}${RANDOM}${RANDOM}${RANDOM}"
+        RANDOM_PASS=$(echo "$RANDOM_PASS" | tr -dc 'a-zA-Z0-9' | head -c 24)
+    fi
+    if [ -n "$RANDOM_PASS" ]; then
+        PASSWORD_HASH=$(echo "$RANDOM_PASS" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+        echo "Generated random internal credential (SSO mode)"
+    fi
+    unset RANDOM_PASS
 fi
 
 # 获取UI类型选择（默认vuetorrent）
@@ -136,15 +150,21 @@ else
         fi
     done
 
-    # 用户设置了新密码 → 覆盖旧凭证（使用向导中设置的用户名）
+    # SSO 模式：PASSWORD_HASH 已由用户密码或随机内部凭证填充（见上方逻辑）
     if [ -n "$PASSWORD_HASH" ]; then
         OLD_USER="${wizard_username:-admin}"
         OLD_PASS="$PASSWORD_HASH"
-        echo "使用用户设置的新密码"
-    # 未找到旧凭证时使用默认值（通过向导安装时，wizard_password 已保证有值）
+        echo "使用 qBittorrent 内部凭证（SSO 网关免密）"
     elif [ -z "$OLD_USER" ]; then
+        # 极端兜底：仍未获得密码哈希时，重新生成随机凭证，绝不使用公开默认密码
+        RANDOM_PASS=$(head -c 24 /dev/urandom 2>/dev/null | base64 2>/dev/null | tr -dc 'a-zA-Z0-9' | head -c 24)
         OLD_USER="admin"
-        OLD_PASS='@ByteArray(ARQ77eY1NUZaQsuDHbIMCA==:0WMRkYTUWVT9wVvdDtHAjU9b3b7uB8NR1Gur2hmQCvCDpm39Q+PsJRJPaCU51dEiz+dTzh8qbPsL8WkFljQYFQ==)'
+        OLD_PASS=$(echo "$RANDOM_PASS" | python3 "$BIN_DIR/qbt_password.py" 2>/dev/null || echo "")
+        if [ -z "$OLD_PASS" ]; then
+            echo "错误：无法生成 qBittorrent 内部凭证" > "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
+        echo "使用随机生成的内部凭证（SSO 网关免密）"
     fi
 
     # 根据UI类型创建完整默认配置

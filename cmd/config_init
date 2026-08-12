@@ -31,7 +31,8 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 echo "wizard_ui_type=${CURRENT_UI_TYPE}"
-echo "wizard_username=${CURRENT_USERNAME}"
+# SSO 模式：用户名字段默认留空表示"保持不变"，避免误覆盖当前凭证
+echo "wizard_username="
 echo "wizard_has_credentials=${HAS_CREDENTIALS}"
 
 echo "Current configuration: UI=${CURRENT_UI_TYPE}, Username=${CURRENT_USERNAME}, HasCredentials=${HAS_CREDENTIALS}"
