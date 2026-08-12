@@ -44,7 +44,24 @@ read_qbt_port() {
     fi
 }
 
+kill_orphan_proxies() {
+    # 清理所有残留的 gateway-proxy 进程（防止历史孤儿进程堆积占用内存）
+    # 匹配本应用专用的 GATEWAY_SOCK，避免误杀其他应用
+    local orphans
+    orphans=$(pgrep -f "gateway-proxy.py.*${GATEWAY_SOCK}" 2>/dev/null)
+    for pid in $orphans; do
+        # 跳过本次要启动的 PID 文件记录
+        if [ -f "$PROXY_PID_FILE" ] && [ "$pid" = "$(cat "$PROXY_PID_FILE" 2>/dev/null)" ]; then
+            continue
+        fi
+        kill -9 "$pid" 2>/dev/null && echo "清理残留代理进程 PID: $pid"
+    done
+}
+
 start_proxy() {
+    # 先清理所有残留的同名代理进程，再启动新实例，避免多个进程堆积
+    kill_orphan_proxies
+
     if [ -f "$PROXY_PID_FILE" ]; then
         local PROXY_PID=$(cat "$PROXY_PID_FILE")
         if kill -0 "$PROXY_PID" 2>/dev/null; then
@@ -97,6 +114,8 @@ stop_proxy() {
         fi
         rm -f "$PROXY_PID_FILE"
     fi
+    # 兜底：清理所有残留的同名代理进程，确保不留孤儿
+    pkill -f "gateway-proxy.py.*${GATEWAY_SOCK}" 2>/dev/null || true
     rm -f "$GATEWAY_SOCK"
     echo "proxy stopped"
 }
@@ -208,8 +227,8 @@ EOF
 
     # 尽早启动代理，与 qBittorrent 并行初始化
     # 代理会等待 qBittorrent WebUI 就绪后才接受请求
-    start_proxy &
-    PROXY_PID=$!
+    # 直接同步调用，避免子 shell 使 gateway-proxy.py 脱离管理、残留孤儿进程
+    start_proxy
 
     # 短等待后检测进程是否存活（最长 3s，按 0.2s 间隔检测）
     elapsed=0
@@ -242,11 +261,6 @@ EOF
     fi
 
     echo "${APP_NAME} started (PID: $PID)"
-
-    # 等待 start_proxy 子 shell 完成（不 wait qbittorrent-nox 守护进程）
-    if [ -n "$PROXY_PID" ]; then
-        wait $PROXY_PID 2>/dev/null || true
-    fi
 
     exit 0
     ;;

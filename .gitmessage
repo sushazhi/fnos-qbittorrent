@@ -1,0 +1,8 @@
+feat: 主题标题
+
+- 要点1
+- 要点2
+
+请用中文描述本次改动。若在 PowerShell 下用 -m 提交中文乱码，请改用：
+  git commit --template .gitmessage
+或先执行： chcp 65001; $OutputEncoding=[Console]::OutputEncoding=[Text.Encoding]::UTF8

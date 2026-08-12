@@ -1,28 +1,20 @@
-# Force LF line endings for all files
-* text=auto eol=lf
+# 统一文本文件编码处理，避免 Windows/Unix 行尾与编码问题
+* text=auto
 
-# Shell scripts
-*.sh text eol=lf
-*.bash text eol=lf
-
-# Config files
-*.json text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
+# 明确声明这些文件为 UTF-8（无 BOM），提交时不做行尾转换
+*.py     text eol=lf
+*.sh     text eol=lf
+*.js     text eol=lf
+*.json   text eol=lf
+*.md     text eol=lf
 manifest text eol=lf
+.gitmessage text eol=lf
+*.ps1    text eol=crlf
 
-# Docs
-*.md text eol=lf
-*.txt text eol=lf
-
-# Images (binary)
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.ico binary
-
-# Build artifacts (exclude from release archives)
-*.fpk export-ignore
-*.sha256sum export-ignore
-artifacts/ export-ignore
+# 二进制文件
+*.png    binary
+*.PNG    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary

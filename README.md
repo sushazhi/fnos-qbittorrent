@@ -2,8 +2,8 @@
 
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.1.0-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.34.0-purple?style=flat-square&logo=vue.js)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.3.2-blue?style=flat-square&logo=qbittorrent)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.34.1-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
@@ -67,37 +67,48 @@ VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置�
 
 1. 打开 **应用中心** → 左下角 **手动安装**
 2. 选择对应架构的fpk文件：
-   - x86设备：`qbittorrent-5.2.1.0-amd64.fpk`
-   - ARM设备：`qbittorrent-5.2.1.0-arm64.fpk`
+   - x86设备：`qbittorrent-5.2.3.2-amd64.fpk`
+   - ARM设备：`qbittorrent-5.2.3.2-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-5.2.1.0-amd64.fpk
+appcenter-cli install-local qbittorrent-5.2.3.2-amd64.fpk
 ```
 
 ---
 
 ## 🏗️ 本地构建
 
-### Windows (PowerShell)
-
-```powershell
-.\build.ps1 -Version 5.2.1.0 -Arch amd64
-```
-
-### Linux (Bash)
+统一使用跨平台 Python 构建脚本 `build.py`，**在 Windows / Linux / macOS 上命令完全一致**，仅需安装 Python 3.8+（项目本身即依赖 Python，无额外负担）。
 
 ```bash
-chmod +x build.sh
-./build.sh --version 5.2.1.0 --arch amd64
+# 基本用法（默认从 manifest 读取版本，默认架构 arm64）
+python build.py
+
+# 指定版本与架构
+python build.py --version 5.2.3.2 --arch amd64
+python build.py --version 5.2.3.2 --arch arm64
+
+# 强制重新下载所有依赖
+python build.py --force
 ```
 
+**参数说明**：
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--version, -v` | 打包版本号（覆盖 manifest） | 读取 manifest |
+| `--arch, -a` | 目标架构 `arm64` / `amd64` | `arm64` |
+| `--force, -f` | 强制重新下载所有依赖 | 关闭 |
+
 **构建特性**：
+- **跨平台**：一份脚本在 Windows / Linux / macOS 通用，自动检测平台并选择对应的官方 `fnpack` 构建工具（`windows-amd64` / `linux-amd64` / `linux-arm` / `darwin-amd64` / `darwin-arm64`）
+- **零外部依赖**：下载用内置 `urllib`，解压用内置 `zipfile`，无需安装 `curl` / `unzip` / `jq`
 - 自动获取对应版本的qBittorrent-nox和VueTorrent
-- 二进制架构自动检测（`platform.machine()`），arm64机器不会下载到amd64
-- 智能代理策略：gh-proxy.org → ghfast.top 自动切换
+- 智能代理策略：gh-proxy.com → ghfast.top → 直连 自动切换
 - 统一更新检测脚本（`app/ui/update-check.js`），同时服务于VueTorrent与原生WebUI
+- 构建产物输出到项目根目录：`qbittorrent-<版本>-<架构>.fpk`
 
 ---
 
@@ -193,8 +204,7 @@ fnos-qbittorrent/
 │   ├── config                     # 配置向导（含密码修改）
 │   ├── uninstall                  # 卸载向导
 │   └── upgrade                    # 升级向导
-├── build.ps1                      # Windows构建脚本
-├── build.sh                       # Linux构建脚本
+├── build.py                       # 跨平台构建脚本（Windows/Linux/macOS）
 ├── manifest                       # 应用清单
 └── README.md
 ```
