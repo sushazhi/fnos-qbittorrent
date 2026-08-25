@@ -11,7 +11,11 @@ PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.upgrade.lock"
 
 # 备份到shares目录（fnOS卸载/升级时保留）
-SHARE_DIR="/vol1/@appshare/qbittorrent"
+# 共享路径可能不在 /vol1（多卷系统），优先使用系统提供的共享路径
+SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "$SHARE_DIR" ]; then
+    SHARE_DIR="/vol1/@appshare/qbittorrent"
+fi
 BACKUP_DIR="${SHARE_DIR}/.data_backup"
 BACKUP_INFO_FILE="${SHARE_DIR}/.backup_info"
 
@@ -36,7 +40,7 @@ fi
 echo "[1/3] Stopping ${APP_NAME} service..."
 
 # 使用绝对路径调用main脚本停止服务
-MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
+MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
 STOPPED=false
 
 if [ -x "$MAIN_SCRIPT" ]; then

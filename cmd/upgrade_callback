@@ -9,10 +9,13 @@ CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
 CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.upgrade.lock"
-MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
+MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
 
-# 备份在shares目录
-SHARE_DIR="/vol1/@appshare/qbittorrent"
+# 备份在shares目录（多卷系统优先使用系统共享路径）
+SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "$SHARE_DIR" ]; then
+    SHARE_DIR="/vol1/@appshare/qbittorrent"
+fi
 BACKUP_DIR="${SHARE_DIR}/.data_backup"
 
 echo "=================================="

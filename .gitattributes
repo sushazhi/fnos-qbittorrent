@@ -11,6 +11,9 @@ manifest text eol=lf
 .gitmessage text eol=lf
 *.ps1    text eol=crlf
 
+# cmd 目录下无扩展名的 shell 脚本（main、install_init 等）
+cmd/*    text eol=lf
+
 # 二进制文件
 *.png    binary
 *.PNG    binary

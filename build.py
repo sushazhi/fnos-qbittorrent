@@ -12,12 +12,16 @@ build.py - 统一的 fnOS 应用打包脚本（跨平台，替代 build.ps1 / bu
     - 使用内置 zipfile 解压，无需外部 unzip
 """
 import argparse
+import gzip
+import io
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import urllib.request
 import zipfile
 
@@ -28,7 +32,7 @@ VERSION_FILE = os.path.join(BUILD_DIR, "versions.json")
 
 # 架构检测：arm64 的 fnpack 在 Linux 上叫 arm
 FNPACK_BASE = "https://static2.fnnas.com/fnpack/fnpack-1.2.3"
-FNPACK_VER = "1.2.1"  # 用于版本缓存判断
+FNPACK_VER = "1.2.3"  # 用于版本缓存判断，需与 FNPACK_BASE 中的版本一致
 
 # 下载源（按顺序尝试）
 MAIN_PROXY = "https://gh-proxy.com/"
@@ -181,6 +185,50 @@ def update_manifest(build_dir, version):
         f.write(content)
 
 
+def _fix_tar_permissions(tar_bytes, outer_patterns):
+    """重建 tar：对匹配 outer_patterns 的文件设置 0755；app.tgz 递归处理其内部 bin/*。
+
+    Windows 上 fnpack 打包会把所有文件写成 0666（无执行位），
+    安装到 fnOS 后 cmd/* 生命周期脚本与 bin/* 可执行文件不可执行，
+    导致升级回调的 `-x $MAIN_SCRIPT` 检查失败（"未找到主脚本"）。
+    """
+    src = tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r")
+    out_buf = io.BytesIO()
+    dst = tarfile.open(fileobj=out_buf, mode="w", format=tarfile.USTAR_FORMAT)
+    for m in src.getmembers():
+        if m.isreg():
+            data = src.extractfile(m).read()
+            if m.name == "app.tgz":
+                inner = gzip.decompress(data)
+                inner_fixed = _fix_tar_permissions(inner, re.compile(r"^bin/"))
+                data = gzip.compress(inner_fixed, compresslevel=6)
+                m.size = len(data)
+            elif outer_patterns.match(m.name):
+                m.mode = 0o755
+            ti = tarfile.TarInfo(m.name)
+            ti.mode = m.mode
+            ti.size = len(data)
+            ti.mtime = m.mtime
+            ti.type = m.type
+            ti.uname = m.uname
+            ti.gname = m.gname
+            dst.addfile(ti, io.BytesIO(data))
+        else:
+            dst.addfile(m)
+    dst.close()
+    return out_buf.getvalue()
+
+
+def fix_fpk_permissions(fpk_path):
+    """修正 fpk 内 cmd/* 与 app.tgz 内 bin/* 的可执行权限（Windows 打包产物为 0666）。"""
+    with gzip.open(fpk_path, "rb") as f:
+        raw = f.read()
+    fixed = _fix_tar_permissions(raw, re.compile(r"^cmd/[^/]+$"))
+    with gzip.open(fpk_path, "wb") as f:
+        f.write(fixed)
+    log("  Fixed cmd/* and bin/* executable permissions in fpk", "green")
+
+
 def inject_version(vue_index_html, version, arch):
     """向 VueTorrent index.html 注入更新检查脚本。"""
     if not os.path.exists(vue_index_html):
@@ -277,7 +325,8 @@ def main():
         sys.exit(1)
     log(f"  -> qBittorrent-nox release: {qbt_tag}", "cyan")
 
-    # 获取 VueTorrent 最新版本
+    # 获取 VueTorrent 最新版本（不锁定版本；旧内核兼容问题由 gateway-proxy.py
+    # 注入的"内核兼容性检测"脚本兜底：内核过旧时显示提示而非静默空白）
     vue_ver = ""
     try:
         log("Fetching latest VueTorrent version...", "cyan")
@@ -410,6 +459,10 @@ def main():
         if proc.stderr:
             log("  " + proc.stderr.decode("utf-8", "replace")[:2000], "red")
         sys.exit(1)
+
+    # Windows 上 fnpack 打包产物所有文件均为 0666（无执行位），
+    # 修正 cmd/* 与 app.tgz 内 bin/* 的执行权限，否则升级时找不到可执行主脚本
+    fix_fpk_permissions(fpk_out)
 
     final_name = f"qbittorrent-{app_version}-{arch}.fpk"
     shutil.move(fpk_out, os.path.join(PROJECT_DIR, final_name))

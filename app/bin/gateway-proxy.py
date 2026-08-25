@@ -116,6 +116,56 @@ _CURRENT_VERSION = os.environ.get("TRIM_APPVER", "0.0.0")
 # ---------------------------------------------------------------------------
 _UPDATE_CHECK_JS_CACHED = None
 
+# 浏览器兼容性检测脚本（纯 ES5，插入到所有 polyfill 之前）：
+# VueTorrent 使用 <script type="module"> + 现代 JS 语法（?. / .at() / replaceAll 等），
+# 旧内核浏览器会静默忽略 module 标签导致页面全白且无任何报错。
+# 这里在内核过旧时显示明确提示，避免"一片空白"无从排查。
+# 注意：本段独立于 _INJECT_SCRIPT_TEMPLATE（不参与 % 格式化），内部可放心使用 % 字符。
+_COMPAT_SCRIPT = (
+    '<script>'
+    '(function(){'
+    'function __qbModernOk(){'
+    'try{'
+    'return ("noModule" in document.createElement("script"))'
+    '&& typeof Array.prototype.at === "function"'
+    '&& typeof String.prototype.replaceAll === "function"'
+    '&& typeof structuredClone === "function";'
+    '}catch(e){return false;}'
+    '}'
+    'function __qbShowCompatWarn(){'
+    'try{'
+    'if(document.getElementById("__qbCompatWarn")){return;}'
+    'var d=document.createElement("div");'
+    'd.setAttribute("id","__qbCompatWarn");'
+    'd.style.cssText="position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483647;'
+    'background:#f1f5f9;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,\\"Segoe UI\\",\\"Microsoft YaHei\\",sans-serif;'
+    'display:flex;align-items:center;justify-content:center;padding:24px;";'
+    'var i=document.createElement("div");'
+    'i.style.cssText="max-width:560px;width:100%;background:#fff;border-radius:12px;'
+    'box-shadow:0 8px 30px rgba(0,0,0,.12);padding:28px 32px;text-align:center;";'
+    'var h=document.createElement("h2");'
+    'h.style.cssText="margin:0 0 12px;font-size:19px;color:#dc2626;line-height:1.5;";'
+    'h.textContent="当前浏览器内核过旧，无法加载 qBittorrent 界面";'
+    'var p=document.createElement("p");'
+    'p.style.cssText="margin:0;font-size:14px;line-height:1.9;color:#334155;";'
+    'p.innerHTML="您的浏览器不支持界面所需的现代 Web 特性（ES Module 等）。<br>'
+    '请使用最新版 <b>Chrome</b> 或 <b>Edge</b> 访问，或升级浏览器后再打开。<br><br>'
+    '如需在旧内核下继续使用，可临时改为 qBittorrent 原生界面（兼容性更好）：<br>'
+    '1. 编辑 <code>qBittorrent.conf</code>，把 <code>WebUI\\\\AlternativeUIEnabled</code> 改为 <code>false</code>；<br>'
+    '2. 在应用中心停止并重新启动 qBittorrent。";'
+    'i.appendChild(h);i.appendChild(p);'
+    'd.appendChild(i);'
+    '(document.body||document.documentElement).appendChild(d);'
+    '}catch(e){}'
+    '}'
+    'if(!__qbModernOk()){'
+    'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",__qbShowCompatWarn);}'
+    'else{__qbShowCompatWarn();}'
+    '}'
+    '})();'
+    '</script>'
+)
+
 def _get_update_check_js():
     global _UPDATE_CHECK_JS_CACHED
     if _UPDATE_CHECK_JS_CACHED is not None:
@@ -509,8 +559,8 @@ _INJECT_SCRIPT_TEMPLATE = (
 _INJECT_SCRIPT_TEMPLATE = _INJECT_SCRIPT_TEMPLATE % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX)
 
 def _build_inject_script():
-    """构建最终注入脚本（包含 update-check.js 内容）"""
-    return _INJECT_SCRIPT_TEMPLATE.replace('/* __QB_UPDATE_CHECK__ */', _get_update_check_js())
+    """构建最终注入脚本（兼容性检测 + polyfill + update-check.js 内容）"""
+    return _COMPAT_SCRIPT + _INJECT_SCRIPT_TEMPLATE.replace('/* __QB_UPDATE_CHECK__ */', _get_update_check_js())
 
 # 延迟构建：仅在首次需要时编码
 _INJECT_SCRIPT_B_CACHED = None
@@ -740,6 +790,36 @@ def set_cached_html(path, data):
         _html_cache[path] = data
 
 _HOME_PATHS = frozenset({'/', '/index.html'})
+
+# 记录 UI 签名（按配置文件 mtime 缓存，避免频繁读文件）
+_ui_signature_cache = {"sig": None, "mtime": None}
+
+
+def _get_ui_signature():
+    """读取配置中 UI 相关键生成签名。
+
+    用户在 qBittorrent WebUI 内直接切换备用 UI（AlternativeUIEnabled）
+    或修改 RootFolder 时，代理进程不会重启，首页 HTML 缓存会命中旧页面。
+    用签名区分缓存，签名变化即换用新的缓存条目。
+    """
+    if not CONFIG_PATH or not os.path.exists(CONFIG_PATH):
+        return ""
+    try:
+        mtime = os.path.getmtime(CONFIG_PATH)
+        if _ui_signature_cache["mtime"] == mtime:
+            return _ui_signature_cache["sig"]
+        with open(CONFIG_PATH, 'r') as f:
+            txt = f.read()
+        alt = re.search(r'^WebUI\\AlternativeUIEnabled=(\w+)', txt, re.MULTILINE)
+        root = re.search(r'^WebUI\\RootFolder=(.*)$', txt, re.MULTILINE)
+        sig = "%s|%s" % (
+            alt.group(1) if alt else "",
+            root.group(1).strip() if root else "",
+        )
+        _ui_signature_cache = {"sig": sig, "mtime": mtime}
+        return sig
+    except Exception:
+        return ""
 
 
 def _is_static_cacheable(method, path):
@@ -1083,6 +1163,9 @@ _REMOVE_HEADERS = frozenset({
 
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
+    # 使用 HTTP/1.1：HTTP/1.0 不支持 chunked 编码，
+    # 而动态 API 响应（无 Content-Length 时）会走 chunked 转发
+    protocol_version = "HTTP/1.1"
     # 共享连接池（类级别，所有实例共用）
     _conn_pool = None
 
@@ -1283,7 +1366,11 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         if self.path == PREFIX:
             self.send_response(301)
             self.send_header("Location", PREFIX + "/")
+            # HTTP/1.1 下必须显式声明 body 长度，否则网关（客户端）
+            # 无法判定响应边界，会一直等待导致请求挂起（iframe 白屏/超时）。
+            self.send_header("Content-Length", "0")
             self.end_headers()
+            self.close_connection = True
             return
 
         # WebSocket 升级
@@ -1369,7 +1456,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         # HTML 首页缓存命中检查（注入后的完整 HTML）
         is_home = _is_home_path(path)
         if is_home:
-            cached_html = get_cached_html(path)
+            # 缓存 key 带上 UI 签名，UI 切换后不命中旧缓存
+            html_key = path + "|" + _get_ui_signature()
+            cached_html = get_cached_html(html_key)
             if cached_html is not None:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1447,6 +1536,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 # 仅移除会阻止 iframe 嵌入的头（X-Frame-Options: DENY）
                 if kl in _REMOVE_HEADERS:
                     continue
+                # send_response 已发送 Server 头，跳过后端的避免重复
+                if kl == "server":
+                    continue
                 # 保留 SameSite 属性（不再剥离），提升 CSRF 防护
                 if kl == "set-cookie":
                     self.send_header(key, value)
@@ -1469,7 +1561,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 data = rewrite_html(data)
                 # 缓存首页 HTML（避免每次打开都重新从后端获取和重写）
                 if is_home and 200 <= resp.status < 300:
-                    set_cached_html(path, data)
+                    set_cached_html(html_key, data)
                 # 添加 CSP 允许 iframe 嵌入，同时提供 XSS 防护
                 self.send_header(
                     "Content-Security-Policy",
@@ -1532,6 +1624,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                             self.send_header("Content-Length", content_length)
                             self.end_headers()
                         else:
+                            # 无长度信息时显式声明空 body，避免网关判定挂起
+                            self.send_header("Content-Length", "0")
                             self.end_headers()
         except Exception:
             logging.error("unhandled in do_request %s %s:\n%s",
@@ -1617,6 +1711,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         for line in hdr_raw.split("\r\n")[1:]:
             if ":" in line:
                 k, v = line.split(":", 1)
+                # 跳过 Server 头避免与 send_response 生成的重复
+                if k.strip().lower() == "server":
+                    continue
                 self.send_header(k.strip(), v.strip())
         self.end_headers()
 

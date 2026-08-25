@@ -74,6 +74,7 @@ case "$UI_TYPE" in
     *)
         echo "Unknown UI type: $UI_TYPE, using default vuetorrent"
         ALT_UI_ENABLED="true"
+        UI_TYPE="vuetorrent"
         ;;
 esac
 
@@ -136,8 +137,12 @@ else
     # 尝试从残留配置中保留凭证（卸载后重装场景）
     OLD_USER=""
     OLD_PASS=""
+    SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+    if [ -z "$SHARE_DIR" ]; then
+        SHARE_DIR="/vol1/@appshare/qbittorrent"
+    fi
     for old_conf in "${DATA_DIR}/qBittorrent/config/qBittorrent.conf" \
-                     "/vol1/@appshare/qbittorrent/.data_backup/qBittorrent/config/qBittorrent.conf"; do
+                     "${SHARE_DIR}/.data_backup/qBittorrent/config/qBittorrent.conf"; do
         if [ -f "$old_conf" ]; then
             OLD_USER=$(grep "^WebUI\\\\Username=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Username=//')
             OLD_PASS=$(grep "^WebUI\\\\Password_PBKDF2=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Password_PBKDF2=//')

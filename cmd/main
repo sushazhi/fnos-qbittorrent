@@ -137,11 +137,20 @@ start)
         if echo "$EXISTING_CMD" | grep -q "profile.*${DATA_DIR}"; then
             echo $EXISTING_PID > "$PID_FILE"
             echo "${APP_NAME} is already running (PID: $EXISTING_PID, recovered)"
+            # 进程在但网关代理可能不在，确保代理运行，避免进程存活而入口不可用
+            if [ ! -S "$GATEWAY_SOCK" ]; then
+                start_proxy
+            elif [ -f "$PROXY_PID_FILE" ] && ! kill -0 "$(cat "$PROXY_PID_FILE" 2>/dev/null)" 2>/dev/null; then
+                start_proxy
+            fi
             exit 0
         fi
         echo "提示：检测到其他 qBittorrent 进程正在运行 (PID: $EXISTING_PID)，继续启动本应用"
     fi
 
+    # 读取配置文件中的 WebUI 端口：用户可能在 WebUI 中修改过端口，
+    # 若仍用默认 8080 启动会覆盖用户设置，导致端口配置丢失
+    read_qbt_port
     mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config" "$(dirname "$LOG_FILE")"
 
     rotate_logs

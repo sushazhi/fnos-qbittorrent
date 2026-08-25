@@ -8,7 +8,7 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.lock"
-MAIN_SCRIPT="/var/apps/qbittorrent/cmd/main"
+MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
 UI_CONFIG="${TRIM_APPDEST}/ui/config"
 
 echo "正在应用 qBittorrent 配置..."
@@ -73,7 +73,7 @@ if [ -f "$CONFIG_FILE" ]; then
     }
 
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" -v wizard_pass="${WIZARD_PASS_HASH}" '
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" -v wizard_pass="${WIZARD_PASS_HASH}" -v root="${TRIM_APPDEST}/ui/vuetorrent" '
         BEGIN {
             in_preferences = 0;
             alt_written = 0;
@@ -81,6 +81,7 @@ if [ -f "$CONFIG_FILE" ]; then
             lha_written = 0;
             user_written = 0;
             pass_written = 0;
+            root_written = 0;
         }
         {
             if ($0 ~ /^\[/) {
@@ -91,6 +92,7 @@ if [ -f "$CONFIG_FILE" ]; then
                     if (!lha_written) print "WebUI\\LocalHostAuth=" lha
                     if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
                     if (wizard_pass != "" && !pass_written) print "WebUI\\Password_PBKDF2=" wizard_pass
+                    if (alt_ui == "true" && !root_written) print "WebUI\\RootFolder=" root
                 }
                 # 进入新 section
                 in_preferences = ($0 == "[Preferences]")
@@ -119,6 +121,10 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!pass_written) { print "WebUI\\Password_PBKDF2=" wizard_pass; pass_written = 1; }
                 next
             }
+            if (in_preferences && alt_ui == "true" && $0 ~ /^WebUI\\RootFolder=/) {
+                if (!root_written) { print "WebUI\\RootFolder=" root; root_written = 1; }
+                next
+            }
 
             print $0
         }
@@ -129,6 +135,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 if (!lha_written) print "WebUI\\LocalHostAuth=" lha
                 if (wizard_user != "" && !user_written) print "WebUI\\Username=" wizard_user
                 if (wizard_pass != "" && !pass_written) print "WebUI\\Password_PBKDF2=" wizard_pass
+                if (alt_ui == "true" && !root_written) print "WebUI\\RootFolder=" root
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
