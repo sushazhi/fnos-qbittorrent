@@ -83,8 +83,8 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "Configuration file exists, updating settings while preserving other settings..."
 
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" -v new_pass="${PASSWORD_HASH}" '
-        BEGIN { alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; port_updated = 0; addr_updated = 0; lha_updated = 0; pass_updated = 0; }
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" -v new_pass="${PASSWORD_HASH}" -v root="${TRIM_APPDEST}/ui/vuetorrent" '
+        BEGIN { alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; port_updated = 0; addr_updated = 0; lha_updated = 0; pass_updated = 0; root_written = 0; }
         {
             if ($0 == "[BitTorrent]") {
                 print $0
@@ -103,6 +103,10 @@ if [ -f "$CONFIG_FILE" ]; then
                 }
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
                 alt_ui_updated = 1
+                if (alt_ui == "true" && !root_written) {
+                    print "WebUI\\RootFolder=" root
+                    root_written = 1
+                }
             }
             else if (new_pass != "" && $0 ~ /^WebUI\\Password_PBKDF2=/) {
                 if (!pass_updated) {
@@ -111,7 +115,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 }
                 next
             }
-            else if (!/^WebUI\\Port=/ && !/^WebUI\\Address=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^WebUI\\LocalHostAuth=/ && !/^WebUI\\Password_PBKDF2=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
+            else if (!/^WebUI\\Port=/ && !/^WebUI\\Address=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^WebUI\\LocalHostAuth=/ && !/^WebUI\\Password_PBKDF2=/ && !/^WebUI\\RootFolder=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
                 print $0
             }
         }
@@ -125,6 +129,7 @@ if [ -f "$CONFIG_FILE" ]; then
                 print "WebUI\\LocalHostAuth=false"
                 if (new_pass != "") print "WebUI\\Password_PBKDF2=" new_pass
                 print "WebUI\\AlternativeUIEnabled=" alt_ui
+                if (alt_ui == "true") print "WebUI\\RootFolder=" root
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"

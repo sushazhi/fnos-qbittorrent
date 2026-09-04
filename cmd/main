@@ -11,6 +11,7 @@ LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
 PROXY_SCRIPT="${BIN_DIR}/gateway-proxy.py"
 GATEWAY_SOCK="${TRIM_APPDEST}/qbittorrent.sock"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 LOG_MAX_SIZE=1048576
 LOG_MAX_FILES=3
@@ -309,9 +310,9 @@ stop)
     ;;
 
 restart)
-    "$0" stop
+    "$SCRIPT_DIR/main" stop
     sleep 2
-    "$0" start
+    "$SCRIPT_DIR/main" start
     ;;
 
 status)

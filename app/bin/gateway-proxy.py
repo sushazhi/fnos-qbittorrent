@@ -275,24 +275,41 @@ _INJECT_SCRIPT_TEMPLATE = (
       'return Promise.resolve(__qbLegacyCopy(text));'
     '}'
     'window.__qbCopyText=function(text){return __qbCopyWithFallback(text);};'
-    '/* 让 navigator.clipboard 始终存在且 writeText 始终可用（覆盖非安全上下文 & iframe 权限不足） */'
+    '/* 让 navigator.clipboard 始终存在且 writeText 始终可用（覆盖非安全上下文 & iframe 权限不足）。'
+    ' * 注意：navigator.clipboard 是原型上的只读 getter，普通赋值会静默失败，'
+    ' * 必须用 Object.defineProperty 在实例上定义；非安全上下文下 VueTorrent 的'
+    ' * copyOrOpenDialog 还会检查 window.isSecureContext，命中即直接弹旧版复制对话框，'
+    ' * 这里改写为 true 让其走剪贴板路径，由上方 execCommand 兜底完成复制。 */'
     'try{'
       'if(typeof navigator==="undefined"){navigator={};}'
-      'if(!navigator.clipboard){navigator.clipboard={};}'
+      'if(!navigator.clipboard){'
+        'try{Object.defineProperty(navigator,"clipboard",{value:{},configurable:true});}catch(e){}'
+      '}'
       'var _clip=navigator.clipboard;'
-      'var _origWrite=_clip.writeText;'
-      '_clip.writeText=function(text){'
-        'if(_origWrite&&typeof _origWrite==="function"){'
-          'try{'
-            'return _origWrite.call(_clip,text).then(function(){return true;},function(){'
-              'return __qbLegacyCopy(text);'
-            '});'
-          '}catch(e){'
-            'return Promise.resolve(__qbLegacyCopy(text));'
+      'if(_clip){'
+        'var _origWrite=_clip.writeText;'
+        'var __qbDoCopy=function(text){'
+          'var ok=__qbLegacyCopy(text);'
+          'return ok?Promise.resolve(true):Promise.reject(new Error("copy failed"));'
+        '};'
+        '_clip.writeText=function(text){'
+          'if(_origWrite&&typeof _origWrite==="function"){'
+            'try{'
+              'return _origWrite.call(_clip,text).then(function(){return true;},function(){'
+                'return __qbDoCopy(text);'
+              '});'
+            '}catch(e){'
+              'return __qbDoCopy(text);'
+            '}'
           '}'
+          'return __qbDoCopy(text);'
+        '};'
+      '}'
+      'try{'
+        'if(!window.isSecureContext){'
+          'Object.defineProperty(window,"isSecureContext",{value:true,configurable:true});'
         '}'
-        'return Promise.resolve(__qbLegacyCopy(text));'
-      '};'
+      '}catch(e){}'
     '}catch(e){}'
     '})();'
     '</script>'
@@ -655,6 +672,12 @@ class ConnectionPool:
             except _q.Empty:
                 break
 
+    def ensure_port(self, port):
+        """动态端口发现：端口变化时清空池内旧端口连接并切换目标端口。"""
+        if port != self._port:
+            self._port = port
+            self.close_all()
+
 
 # ---------------------------------------------------------------------------
 # 静态资源缓存（LRU，按总字节数控制，避免大文件撑爆内存）
@@ -778,7 +801,7 @@ def _call_qbt_api(method, api_path, body=None):
     """调用 qBittorrent WebUI API（LocalHostAuth=false，无需 Cookie）。
     返回 (status, json_dict_or_text)。失败返回 (None, None)。"""
     host = TARGET_HOST
-    port = INITIAL_PORT
+    port = get_target_port()
     try:
         conn = HTTPConnection(host, port, timeout=15)
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -847,7 +870,8 @@ def _get_ui_signature():
             alt.group(1) if alt else "",
             root.group(1).strip() if root else "",
         )
-        _ui_signature_cache = {"sig": sig, "mtime": mtime}
+        _ui_signature_cache["sig"] = sig
+        _ui_signature_cache["mtime"] = mtime
         return sig
     except Exception:
         return ""
@@ -1142,12 +1166,24 @@ _cached_version = {"expires": 0, "data": None}
 # ---------------------------------------------------------------------------
 # WebSocket 隧道（双向 TCP 透传）
 # ---------------------------------------------------------------------------
+def _enable_tcp_keepalive(s):
+    """开启 TCP keepalive：检测半开连接，同时不限制空闲时长（WS 长连接可一直挂着）。"""
+    try:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 6)
+    except Exception:
+        pass
+
+
 def _tunnel_sock(client_sock, backend_sock):
     try:
+        _enable_tcp_keepalive(client_sock)
+        _enable_tcp_keepalive(backend_sock)
         while True:
-            r, _, _ = select.select([client_sock, backend_sock], [], [], 30)
-            if not r:
-                break
+            r, _, _ = select.select([client_sock, backend_sock], [], [])
             for s in r:
                 data = s.recv(65536)
                 if not data:
@@ -1426,8 +1462,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         port = get_target_port()
         pool = ProxyHandler._conn_pool
 
-        # 从连接池获取连接
+        # 从连接池获取连接（端口变化时先切换池目标，避免打到旧端口）
         if pool:
+            pool.ensure_port(port)
             conn = pool.acquire()
         else:
             conn = HTTPConnection(TARGET_HOST, port, timeout=30)
@@ -1460,6 +1497,24 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         body = None
         if content_length:
             body = self.rfile.read(int(content_length))
+        elif (self.headers.get("Transfer-Encoding") or "").lower() == "chunked":
+            # 块编码请求体：解块后整体转发（后端将收到 Content-Length）
+            chunks = []
+            while True:
+                size_line = self.rfile.readline(1024).strip()
+                try:
+                    size = int(size_line.split(b";")[0], 16)
+                except ValueError:
+                    break
+                if size == 0:
+                    while True:
+                        trailer = self.rfile.readline(1024)
+                        if trailer in (b"\r\n", b"\n", b""):
+                            break
+                    break
+                chunks.append(self.rfile.read(size))
+                self.rfile.read(2)  # 块尾 CRLF
+            body = b"".join(chunks)
 
         # 静态缓存命中检查
         cache_key = self.command + ":" + path
@@ -1544,6 +1599,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 conn.close()
             return
 
+        # 标记后端响应体是否已完整读取：未读完的连接状态不干净，不可归还连接池
+        body_done = False
+
         try:
             all_resp_headers = resp.getheaders()
             is_html = any(
@@ -1577,6 +1635,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 # HTML 时自行处理 Content-Encoding
                 if kl == "content-encoding" and is_html:
                     continue
+                # HTML 时用注入端 CSP 替换后端的，避免双 CSP 取交集导致过严
+                if kl == "content-security-policy" and is_html:
+                    continue
                 # 跳过 hop-by-hop
                 if kl in ("transfer-encoding", "connection", "content-length"):
                     continue
@@ -1585,6 +1646,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             # 读取并处理响应 body
             if is_html:
                 data = resp.read()
+                body_done = True
                 if content_encoding:
                     raw = decompress(data, content_encoding)
                     if raw is not None:
@@ -1613,6 +1675,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 if cacheable and 200 <= resp.status < 300:
                     # 静态资源：读全并缓存（缓存层会按字节上限/单文件上限自动淘汰或跳过）
                     data = resp.read()
+                    body_done = True
                     ch = [
                         (k, v) for k, v in all_resp_headers
                         if k.lower() not in (
@@ -1637,6 +1700,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                             self.send_header("Content-Length", content_length)
                             self.end_headers()
                             _stream_copy(resp, self.wfile)
+                            body_done = True
                         else:
                             # 无长度信息：以 chunked 形式转发
                             self.send_header("Transfer-Encoding", "chunked")
@@ -1649,6 +1713,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                                 self.wfile.write(
                                     b"%x\r\n" % len(chunk) + chunk + b"\r\n"
                                 )
+                            body_done = True
                     else:
                         # HEAD：仅透传长度头（不读 body）
                         if content_length:
@@ -1658,13 +1723,18 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                             # 无长度信息时显式声明空 body，避免网关判定挂起
                             self.send_header("Content-Length", "0")
                             self.end_headers()
+                        body_done = True
         except Exception:
             logging.error("unhandled in do_request %s %s:\n%s",
                           self.command, path, traceback.format_exc())
         finally:
-            if pool:
-                pool.release(conn)
+            if body_done:
+                if pool:
+                    pool.release(conn)
+                else:
+                    conn.close()
             else:
+                # 响应体未读完，连接状态不干净，直接丢弃不入池
                 conn.close()
 
     def _handle_ws(self):
@@ -1748,13 +1818,23 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header(k.strip(), v.strip())
         self.end_headers()
 
-        if remaining:
-            self.wfile.write(remaining)
-            self.wfile.flush()
+        # 标记该连接由 WS 隧道接管：服务器层跳过 SHUT_WR（半关闭会切断
+        # 服务端发送方向），主循环也不再读取此连接，避免与隧道线程争抢数据
+        try:
+            self.connection._qb_ws = True
+        except Exception:
+            pass
+        self.close_connection = True
 
-        client_raw = self.connection
-        backend.setblocking(True)
+        # 复制 fd 给隧道线程：主线程随后关闭原 fd 不影响隧道
+        self.wfile.flush()
+        client_raw = self.connection.dup()
         client_raw.setblocking(True)
+
+        if remaining:
+            client_raw.sendall(remaining)
+
+        backend.setblocking(True)
 
         t = threading.Thread(target=_tunnel_sock, args=(client_raw, backend))
         t.daemon = True
@@ -1813,6 +1893,14 @@ class ThreadedUnixHTTPServer(http.server.HTTPServer):
             self.handle_error(request, client_address)
         finally:
             self.shutdown_request(request)
+
+    def shutdown_request(self, request):
+        # WebSocket 隧道接管期间禁止半关闭（SHUT_WR 会切断服务端发送方向），
+        # 仅关闭 fd；真实连接由隧道线程持有的 dup fd 维持
+        if getattr(request, "_qb_ws", False):
+            self.close_request(request)
+            return
+        super().shutdown_request(request)
 
     def server_close(self):
         self._executor.shutdown(wait=False)

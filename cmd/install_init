@@ -13,7 +13,7 @@ log_error() {
     fi
 }
 
-SAVE_PATH="${wizard_save_path:-/vol1/1000/downloads/}"
+SAVE_PATH="${wizard_save_path:-/vol1/@appshare/qbittorrent/downloads/}"
 
 echo "Checking save path: $SAVE_PATH"
 
