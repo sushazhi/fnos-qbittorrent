@@ -3,8 +3,9 @@
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
 ![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.3.2-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.34.1-purple?style=flat-square&logo=vue.js)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.35.0-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
+![MCP](https://img.shields.io/badge/MCP-%E2%9C%93%20AI%E6%8E%A5%E5%85%A5-8A2BE2?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)
 
 ---
@@ -24,6 +25,7 @@
 | 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
 | 🔔 **更新检测** | 自动检测GitHub最新版本，VueTorrent与原生WebUI均支持，按架构匹配 |
 | 🔄 **动态端口** | WebUI改端口后代理自动跟随，无需重启 |
+| 🤖 **MCP AI 接入** | 内置 MCP Server，CodeBuddy / Cherry Studio / Claude 等 AI 客户端可直接管理下载任务 |
 
 ---
 
@@ -73,7 +75,7 @@ VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置�
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-5.2.3.2-amd64.fpk
+appcenter-cli install-local qbittorrent-5.2.3.2-arm64.fpk
 ```
 
 ---
@@ -158,6 +160,105 @@ curl -s -b cookies.txt "http://<NAS_IP>:8080/api/v2/torrents/info"
 
 ---
 
+## 🤖 MCP 服务（AI 客户端接入）
+
+应用内置 **qBittorrent MCP Server**（Streamable HTTP 传输，零第三方依赖），让 AI 客户端（CodeBuddy / Cherry Studio / Claude 等）通过 MCP 协议直接管理下载任务：
+
+```
+AI 客户端 ──HTTP POST /mcp (JSON-RPC 2.0)──> MCP Server (:8081) ──> 127.0.0.1:8080 qBittorrent WebUI API
+```
+
+### 快速开始
+
+1. 打开应用窗口，点击**标题栏 MCP 图标**进入「MCP 服务设置」
+2. 勾选 **启用 MCP 服务**，点击 **保存并生效**
+3. 复制面板中的 **MCP 连接地址** 与 **Web API Key**
+4. 在 AI 客户端中按以下格式添加：
+
+```json
+{
+  "mcpServers": {
+    "qbittorrent": {
+      "type": "http",
+      "url": "http://<NAS_IP>:8081/mcp",
+      "headers": {
+        "Authorization": "Bearer <你的API Key>"
+      }
+    }
+  }
+}
+```
+
+### 设置面板
+
+| 选项 | 说明 |
+|------|------|
+| **启用 MCP 服务** | 开启后由代理自动拉起/热重启 MCP 子进程 |
+| **服务端口** | 默认 `WebUI端口 + 1`（即 `8081`），可自定义（1024–65535） |
+| **Web API Key** | 客户端鉴权密钥，支持一键复制 / **重新生成**（旧 Key 立即失效） |
+| **MCP 连接地址** | 客户端接入 URL，一键复制 |
+| **允许高危操作** | 高危操作开关，详见下文 |
+
+### 🛡️ 高危操作开关
+
+为防止 AI 误操作，**删除 / 停止 / 开始** 任务默认**禁用**，关闭状态下 MCP 仅提供只读查询与添加任务能力：
+
+| 开关状态 | 可用能力 |
+|----------|----------|
+| 关闭（默认） | 查看版本/状态/任务列表/详情、添加任务，以及通用 API 透传中的低风险写操作（改分类/标签/限速/RSS 等） |
+| 开启 | 上述全部 + 停止 / 开始 / 删除任务，以及通用 API 透传的全部写操作 |
+
+- 开关在「MCP 服务设置」面板中切换，**保存即热重启生效**，无需重启应用
+- 禁用期间：高危工具不会出现在 `tools/list` 的正常列表描述中（带"已被管理员禁用"标注），直接调用也会收到明确的错误提示
+- 持久化于 `mcp.conf`（与 `qBittorrent.conf` 同目录），重启后保持
+
+### 工具清单
+
+| 工具 | 说明 | 高危 |
+|------|------|:----:|
+| `qb_app_info` | qBittorrent 版本与 MCP 服务信息 | |
+| `qb_global_status` | 全局传输状态（速度 / 总量 / 连接状态） | |
+| `qb_list_torrents` | 列出下载任务（按状态 / 分类 / 标签过滤、排序、限量） | |
+| `qb_torrent_detail` | 单任务详情（属性 + 文件列表） | |
+| `qb_add_torrent` | 添加下载任务（磁力链接 / .torrent 地址，可指定目录与分类） | |
+| `qb_start_torrents` | 开始（恢复）任务 | 🟠 |
+| `qb_stop_torrents` | 停止（暂停）任务 | 🟠 |
+| `qb_delete_torrents` | 删除任务（可选同时删除文件） | 🟠 |
+| `qb_api_request` | **通用 API 透传**：调用任意 qBittorrent WebUI API 端点，完整覆盖官方 API（含搜索插件、RSS、日志、统计等无专属封装的能力） | 视端点 |
+
+### 通用 API 透传（`qb_api_request`）
+
+qBittorrent WebUI API 有 100+ 端点，除上述专属工具外，`qb_api_request` 可调用**任意** `/api/v2` 端点，实现完整接入：
+
+```json
+// tools/call 参数示例：查看所有分类
+{ "name": "qb_api_request", "arguments": { "method": "GET", "path": "torrents/categories" } }
+
+// 示例：通过搜索插件搜索资源
+{ "name": "qb_api_request", "arguments": {
+    "method": "POST", "path": "search/start",
+    "params": { "pattern": "Ubuntu", "category": "all", "plugins": "enabled" } } }
+```
+
+安全约束：
+
+| 规则 | 说明 |
+|------|------|
+| `GET` 查询 | 始终允许 |
+| 低风险写操作 | 添加任务、分类/标签管理、限速、优先级、RSS 管理等，始终允许 |
+| 其余写操作 | 需开启「允许高危操作」（与专属高危工具同一开关） |
+| 敏感端点 | `auth/*`、`app/setPreferences`、`app/rotateAPIKey` 等一律禁止透传，防止 AI 破坏鉴权配置 |
+
+### 鉴权说明
+
+- 请求头支持 `Authorization: Bearer <key>` 或 `X-Api-Key: <key>` 两种方式
+- Key 即 qBittorrent **Web API Key**（可在 VueTorrent：设置 → WebUI → Web API Key 查看），每次请求实时读取，**轮换后立即生效，无需重启**
+- 未配置 API Key 时仅允许来自 `127.0.0.1` 的请求
+
+> 💡 更多技术细节可查看服务端脚本 `app/bin/mcp-server.py` 头部注释。
+
+---
+
 ## 📋 更新日志
 
 详见 [GitHub Releases](https://github.com/sushazhi/fnos-qbittorrent/releases)
@@ -179,7 +280,8 @@ fnos-qbittorrent/
 ├── app/
 │   ├── bin/
 │   │   ├── qbittorrent-nox        # qBittorrent守护进程
-│   │   ├── gateway-proxy.py       # Python反向代理（网关模式）
+│   │   ├── gateway-proxy.py       # Python反向代理（网关模式 + MCP服务托管）
+│   │   ├── mcp-server.py          # qBittorrent MCP Server（AI客户端接入）
 │   │   └── qbt_password.py        # PBKDF2密码哈希生成
 │   └── ui/
 │       ├── vuetorrent/            # VueTorrent WebUI

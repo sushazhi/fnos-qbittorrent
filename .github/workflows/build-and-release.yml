@@ -158,7 +158,15 @@ jobs:
 
           if [ -f app/bin/gateway-proxy.py ]; then
             chmod +x app/bin/gateway-proxy.py
-            echo "gateway-proxy.py ready"
+            echo "gateway-proxy.py ready (reverse proxy + MCP host)"
+          fi
+
+          if [ -f app/bin/mcp-server.py ]; then
+            chmod +x app/bin/mcp-server.py
+            echo "mcp-server.py ready (MCP Server for AI clients)"
+          else
+            echo "ERROR: app/bin/mcp-server.py not found (MCP service is required)"
+            exit 1
           fi
 
           if [ -f app/bin/qbt_password.py ]; then
@@ -221,6 +229,7 @@ jobs:
           **Architecture:** ${{ matrix.arch }}
           **qBittorrent-nox Release:** ${{ env.QBT_RELEASE_TAG }}
           **VueTorrent Version:** ${{ env.VUETORRENT_VERSION }}
+          **MCP Server:** ✓ included (app/bin/mcp-server.py, 高危操作开关默认关闭)
 
           **Git Info:**
           - Commit: \`${{ github.sha }}\`

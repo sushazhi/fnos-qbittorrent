@@ -21,6 +21,7 @@ import sys
 import os
 import signal
 import re
+import subprocess
 import time
 import threading
 import gzip
@@ -482,13 +483,151 @@ _INJECT_SCRIPT_TEMPLATE = (
     '}'
     'setTimeout(_qBUpdateTitle,3000);'
     'setInterval(_qBUpdateTitle,10000);'
+    '/* ===== MCP 设置面板（iOS 液态玻璃风格）===== */'
+    'function __qbMcpEnsureStyle(){'
+    'if(document.getElementById("__qbMcpStyle")){return;}'
+    'var st=document.createElement("style");'
+    'st.id="__qbMcpStyle";'
+    'st.textContent="@keyframes qbGFade{from{opacity:0}to{opacity:1}}@keyframes qbGPop{from{opacity:0;transform:scale(.92) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}'
+    '#__qbMcpOv{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483646;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(8,10,16,0.35);animation:qbGFade .25s ease both;-webkit-backdrop-filter:blur(10px) saturate(1.2);backdrop-filter:blur(10px) saturate(1.2);}'
+    '.qbGlass{width:440px;max-width:94vw;max-height:86vh;overflow:auto;position:relative;color:#f5f5f7;font-size:13px;line-height:1.7;border-radius:28px;padding:22px 24px;background:rgba(40,40,48,0.55);border:1px solid rgba(255,255,255,0.16);box-shadow:0 24px 80px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.18),inset 0 -1px 0 rgba(255,255,255,0.04);animation:qbGPop .38s cubic-bezier(.3,1.06,.4,1.08) both;}'
+    '.qbGTitle{font-size:15px;font-weight:600;color:#fff;margin-bottom:4px;letter-spacing:.3px;}'
+    '.qbGTip{color:rgba(235,235,245,0.6);margin-bottom:16px;}'
+    '.qbGLabel{color:rgba(235,235,245,0.6);font-size:12px;margin:0 0 6px;}'
+    '.qbGRow{display:flex;align-items:center;gap:8px;margin-bottom:16px;}'
+    '.qbGCheck{width:16px;height:16px;accent-color:#0a84ff;cursor:pointer;flex:0 0 auto;}'
+    '.qbGInput{flex:1;min-width:0;background:rgba(255,255,255,0.09);border:1px solid rgba(255,255,255,0.14);border-radius:16px;color:#f5f5f7;padding:8px 14px;outline:none;transition:border-color .2s,background .2s;}'
+    '.qbGInput:focus{border-color:rgba(10,132,255,0.75);background:rgba(255,255,255,0.13);}'
+    '.qbGBtn{flex:0 0 auto;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);border-radius:999px;color:#f5f5f7;padding:7px 16px;font-size:12px;cursor:pointer;transition:background .2s,transform .15s;box-shadow:inset 0 1px 0 rgba(255,255,255,0.12);}'
+    '.qbGBtn:hover{background:rgba(255,255,255,0.2);}'
+    '.qbGBtn:active{transform:scale(.96);}'
+    '.qbGBtnP{background:rgba(10,132,255,0.8);border-color:rgba(160,200,255,0.35);}'
+    '.qbGBtnP:hover{background:rgba(10,132,255,0.95);}'
+    '.qbGHint{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.1);border-radius:18px;padding:11px 14px;margin-bottom:18px;color:rgba(235,235,245,0.6);font-size:12px;word-break:break-all;}'
+    '.qbGBtns{display:flex;justify-content:flex-end;gap:10px;}'
+    '@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){'
+    '.qbGlass{background:rgba(44,44,54,0.42);-webkit-backdrop-filter:blur(32px) saturate(1.8);backdrop-filter:blur(32px) saturate(1.8);}'
+    '}";'
+    'document.head.appendChild(st);'
+    '}'
+    'function __qbMcpPanel(){'
+    '__qbMcpEnsureStyle();'
+    'fetch(P+"/api/mcp/config").then(function(r){return r.json();}).then(function(cfg){'
+    'if(!cfg||!cfg.success){window.__qbToast("error","读取 MCP 配置失败");return;}'
+    'var old=document.getElementById("__qbMcpOv");if(old)old.remove();'
+    'var ov=document.createElement("div");'
+    'ov.id="__qbMcpOv";'
+    'var box=document.createElement("div");'
+    'box.className="qbGlass";'
+    'var h=document.createElement("div");'
+    'h.className="qbGTitle";'
+    'h.textContent="MCP 服务设置（AI 客户端接入）";'
+    'box.appendChild(h);'
+    'var tip=document.createElement("div");'
+    'tip.className="qbGTip";'
+    'tip.textContent="开启后，AI 客户端（CodeBuddy / Cherry Studio / Claude 等）可通过 MCP 协议管理下载任务。";'
+    'box.appendChild(tip);'
+    'var row1=document.createElement("label");'
+    'row1.className="qbGRow";row1.style.cursor="pointer";'
+    'var cb=document.createElement("input");'
+    'cb.type="checkbox";cb.className="qbGCheck";cb.checked=!!cfg.enabled;'
+    'row1.appendChild(cb);'
+    'var s1=document.createElement("span");s1.textContent="启用 MCP 服务";'
+    'row1.appendChild(s1);box.appendChild(row1);'
+    'var row1b=document.createElement("label");'
+    'row1b.className="qbGRow";row1b.style.cursor="pointer";'
+    'var cb2=document.createElement("input");'
+    'cb2.type="checkbox";cb2.className="qbGCheck";cb2.checked=!!cfg.allowDangerous;'
+    'row1b.appendChild(cb2);'
+    'var s1b=document.createElement("span");s1b.textContent="允许高危操作（删除 / 停止 / 开始任务）";'
+    'row1b.appendChild(s1b);box.appendChild(row1b);'
+    'var tip2=document.createElement("div");'
+    'tip2.className="qbGTip";tip2.style.marginTop="-10px";tip2.style.fontSize="11px";'
+    'tip2.textContent="关闭后 AI 只能查看信息与添加任务，无法删除或启停任务。";'
+    'box.appendChild(tip2);'
+    'var row2=document.createElement("div");'
+    'row2.className="qbGRow";'
+    'var l2=document.createElement("span");'
+    'l2.style.cssText="color:rgba(235,235,245,0.6);font-size:12px;flex:0 0 auto;";'
+    'l2.textContent="服务端口";'
+    'var pin=document.createElement("input");'
+    'pin.type="text";pin.className="qbGInput";pin.value=cfg.port||"";'
+    'pin.style.width="120px";pin.style.flex="0 0 auto";'
+    'row2.appendChild(l2);row2.appendChild(pin);box.appendChild(row2);'
+    'var l3=document.createElement("div");'
+    'l3.className="qbGLabel";'
+    'l3.textContent="Web API Key（客户端鉴权用）";'
+    'box.appendChild(l3);'
+    'var row3=document.createElement("div");'
+    'row3.className="qbGRow";'
+    'var kin=document.createElement("input");'
+    'kin.type="text";kin.className="qbGInput";kin.value=cfg.apiKey||"";kin.readOnly=true;'
+    'row3.appendChild(kin);'
+    'var kcp=document.createElement("button");'
+    'kcp.textContent="复制";kcp.className="qbGBtn";'
+    'kcp.onclick=function(){window.__qbCopyText(kin.value).then(function(ok){window.__qbToast(ok?"success":"error",ok?"Key 已复制":"复制失败");});};'
+    'row3.appendChild(kcp);'
+    'var rot=document.createElement("button");'
+    'rot.textContent="重新生成";rot.className="qbGBtn";'
+    'rot.onclick=function(){'
+    'window.__qbToast("info","正在重新生成 Key...");'
+    'fetch(P+"/api/mcp/key/rotate",{method:"POST"}).then(function(r){return r.json();}).then(function(r2){'
+    'if(r2.success){kin.value=r2.apiKey;window.__qbToast("success","已生成新 Key，旧 Key 立即失效");}'
+    'else{window.__qbToast("error","生成失败: "+(r2.error||"未知错误"));}})'
+    '.catch(function(){window.__qbToast("error","生成失败，网络错误");});'
+    '};'
+    'row3.appendChild(rot);'
+    'box.appendChild(row3);'
+    'var l4=document.createElement("div");'
+    'l4.className="qbGLabel";'
+    'l4.textContent="MCP 连接地址";'
+    'box.appendChild(l4);'
+    'var row4=document.createElement("div");'
+    'row4.className="qbGRow";'
+    'var uin=document.createElement("input");'
+    'uin.type="text";uin.className="qbGInput";uin.readOnly=true;'
+    'uin.value="http://"+location.hostname+":"+(cfg.port||"")+"/mcp";'
+    'row4.appendChild(uin);'
+    'var ucp=document.createElement("button");'
+    'ucp.textContent="复制";ucp.className="qbGBtn";'
+    'ucp.onclick=function(){window.__qbCopyText(uin.value).then(function(ok){window.__qbToast(ok?"success":"error",ok?"地址已复制":"复制失败");});};'
+    'row4.appendChild(ucp);'
+    'box.appendChild(row4);'
+    'var hint=document.createElement("div");'
+    'hint.className="qbGHint";'
+    'hint.textContent="客户端配置 JSON：{\\"mcpServers\\":{\\"qbittorrent\\":{\\"type\\":\\"http\\",\\"url\\":\\""+uin.value+"\\",\\"headers\\":{\\"Authorization\\":\\"Bearer <API Key>\\"}}}}";'
+    'box.appendChild(hint);'
+    'var btns=document.createElement("div");'
+    'btns.className="qbGBtns";'
+    'var cancel=document.createElement("button");'
+    'cancel.textContent="取消";cancel.className="qbGBtn";'
+    'cancel.onclick=function(){ov.remove();};'
+    'btns.appendChild(cancel);'
+    'var save=document.createElement("button");'
+    'save.textContent="保存并生效";save.className="qbGBtn qbGBtnP";'
+    'save.onclick=function(){'
+    'var pt=parseInt(pin.value,10);'
+    'if(!(pt>1023&&pt<65536)){window.__qbToast("error","端口需在 1024-65535 之间");return;}'
+    'fetch(P+"/api/mcp/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:cb.checked,port:pt,allowDangerous:cb2.checked})})'
+    '.then(function(r){return r.json();}).then(function(r2){'
+    'if(r2.success){window.__qbToast("success","MCP 配置已保存并生效");ov.remove();}'
+    'else{window.__qbToast("error","保存失败: "+(r2.error||"未知错误"));}})'
+    '.catch(function(){window.__qbToast("error","保存失败，网络错误");});'
+    '};'
+    'btns.appendChild(save);'
+    'box.appendChild(btns);'
+    'ov.onclick=function(ev){if(ev.target===ov)ov.remove();};'
+    'ov.appendChild(box);'
+    'document.body.appendChild(ov);'
+    '}).catch(function(){window.__qbToast("error","读取 MCP 配置失败");});'
+    '}'
       'function _qBDetect(){'
      'var addBtn=function(){'
      'var h=fe.closest(".trim-ui__app-layout--window");'
      'if(h){h=h.querySelector(".trim-ui__app-layout--header");'
      'if(h){var r=h.querySelector(":scope > div:last-child");'
      'if(r){'
-     'var _olds=r.querySelectorAll("#qb-newwindow-btn,#qb-openfolder-btn,#qb-pickfolder-btn,#qb-updatecheck-btn");'
+     'var _olds=r.querySelectorAll("#qb-newwindow-btn,#qb-openfolder-btn,#qb-pickfolder-btn,#qb-updatecheck-btn,#qb-mcp-btn");'
      'if(_olds.length>0){'
      'if(_olds[0].getAttribute("data-qb-inc")===_QB_INC){return;}'
      'for(var _oi=_olds.length-1;_oi>=0;_oi--){_olds[_oi].parentNode.removeChild(_olds[_oi]);}'
@@ -572,6 +711,14 @@ _INJECT_SCRIPT_TEMPLATE = (
      'u.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 1 1-8-8m-4.5 4.5L12 4l4.5 4.5"/></svg>\';'
      'u.onclick=function(e){e.stopPropagation();if(typeof __qbCheckUpdate==="function"){__qbCheckUpdate();}};'
      'r.insertBefore(u, b);'
+     'var m=document.createElement("div");'
+     'm.id="qb-mcp-btn";'
+     'm.title="MCP 服务设置";'
+     'm.setAttribute("data-qb-inc",_QB_INC);'
+     'm.className="flex h-full w-base shrink-0 cursor-pointer items-center justify-center px-[15px] text-[var(--semi-color-text-0)] hover:bg-[var(--semi-color-fill-0)]";'
+     'm.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v6m6-6v6M6 9h12v2a6 6 0 0 1-12 0V9zm6 11v2"/></svg>\';'
+     'm.onclick=function(e){e.stopPropagation();__qbMcpPanel();};'
+     'r.insertBefore(m, u);'
      '}}}};'
      'if(document.getElementById("app")){'
      'addBtn();'
@@ -601,10 +748,27 @@ _INJECT_SCRIPT_TEMPLATE = (
     '}'
     '})();'
     '</script>'
+    # SSO 免密预登录（第 4 个 %s 为 PREFIX）：
+    # VueTorrent 启动时无 SID cookie 会先渲染登录框、自动登录成功后才切主界面，
+    # 造成登录框"闪现"。这里在页面最早期（head 内联脚本）直接调 auth/login
+    # 预取 SID：代理转发到 127.0.0.1，qBittorrent 对 localhost 免密（LocalHostAuth=false），
+    # 空凭据即可登录成功。VueTorrent 启动读到 SID 直接进入主界面，登录框不再出现。
+    # 登录失败（如用户改用密码认证）时静默忽略，VueTorrent 正常显示登录框。
+    '<script>'
+    '(function(){'
+    'var P="%s";'
+    'try{'
+    'if(document.cookie.indexOf("SID=")<0){'
+    'fetch(P+"/api/v2/auth/login",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"username=admin&password="}).catch(function(){});'
+    '}'
+    '}catch(e){}'
+    '})();'
+    '</script>'
 )
 
 # 构建模板（不含 update-check.js 内容，运行时注入）
-_INJECT_SCRIPT_TEMPLATE = _INJECT_SCRIPT_TEMPLATE % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX)
+# 占位符依次为：架构、版本、PREFIX（iframe 块内）、PREFIX（预登录块内）
+_INJECT_SCRIPT_TEMPLATE = _INJECT_SCRIPT_TEMPLATE % (CURRENT_ARCH, _CURRENT_VERSION, PREFIX, PREFIX)
 
 def _build_inject_script():
     """构建最终注入脚本（兼容性检测 + polyfill + update-check.js 内容）"""
@@ -828,6 +992,109 @@ def _set_qbt_save_path(new_path):
     body = urlencode({"json": json.dumps(prefs)})
     status, resp = _call_qbt_api("POST", "/api/v2/app/setPreferences", body=body)
     return status == 200
+
+
+# ---------------------------------------------------------------------------
+# MCP 服务托管（设置面板 + 子进程热重启）
+# ---------------------------------------------------------------------------
+# qBittorrent 5.2 Web API Key（兼容两种历史键名）
+_RE_API_KEY = re.compile(r'^WebUI\\(?:WebAPIKey|APIKey)=(.*)$', re.MULTILINE)
+
+_mcp_proc = None
+_mcp_lock = threading.Lock()
+
+
+def _get_webapi_key():
+    """读取 qBittorrent.conf 中的 Web API Key（无缓存，调用频率低）。"""
+    if not CONFIG_PATH or not os.path.exists(CONFIG_PATH):
+        return ""
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            m = _RE_API_KEY.search(f.read())
+        return m.group(1).strip() if m else ""
+    except Exception:
+        return ""
+
+
+def _mcp_conf_file():
+    """MCP 配置文件路径（与 qBittorrent.conf 同目录；独立存放，避免被 qB 重写丢弃）。"""
+    if not CONFIG_PATH:
+        return None
+    return os.path.join(os.path.dirname(CONFIG_PATH), "mcp.conf")
+
+
+def _read_mcp_conf():
+    cfg = {"enabled": False, "port": None, "allow_dangerous": False}
+    conf = _mcp_conf_file()
+    if conf and os.path.exists(conf):
+        try:
+            with open(conf, "r") as f:
+                for line in f:
+                    k, _, v = line.strip().partition("=")
+                    k = k.strip()
+                    if k == "MCP_ENABLED":
+                        cfg["enabled"] = v.strip().lower() == "true"
+                    elif k == "MCP_PORT":
+                        try:
+                            cfg["port"] = int(v.strip())
+                        except ValueError:
+                            pass
+                    elif k == "MCP_ALLOW_DANGEROUS":
+                        cfg["allow_dangerous"] = v.strip().lower() == "true"
+        except Exception:
+            pass
+    return cfg
+
+
+def _write_mcp_conf(enabled, port, allow_dangerous=False):
+    conf = _mcp_conf_file()
+    os.makedirs(os.path.dirname(conf), exist_ok=True)
+    with open(conf, "w") as f:
+        f.write("MCP_ENABLED=%s\nMCP_PORT=%d\nMCP_ALLOW_DANGEROUS=%s\n" % (
+            "true" if enabled else "false", port,
+            "true" if allow_dangerous else "false"))
+
+
+def _kill_mcp_proc():
+    global _mcp_proc
+    if _mcp_proc and _mcp_proc.poll() is None:
+        try:
+            _mcp_proc.terminate()
+            logging.info("mcp server terminated (pid %s)", _mcp_proc.pid)
+        except Exception:
+            pass
+    _mcp_proc = None
+
+
+def _ensure_mcp_proc():
+    """按 mcp.conf 拉起/停止 MCP 子进程（代理启动与配置变更时调用）。"""
+    global _mcp_proc
+    with _mcp_lock:
+        cfg = _read_mcp_conf()
+        _kill_mcp_proc()
+        if not cfg["enabled"]:
+            logging.info("mcp server disabled, skip spawn")
+            return
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp-server.py")
+        if not os.path.exists(script):
+            logging.warning("mcp-server.py not found, skip spawn")
+            return
+        port = cfg["port"] or (get_target_port() + 1)
+        cmd = ["python3", script,
+               "--port", str(port),
+               "--config", str(CONFIG_PATH),
+               "--webui-port", str(get_target_port())]
+        if cfg["allow_dangerous"]:
+            cmd.append("--allow-dangerous")
+        try:
+            _mcp_proc = subprocess.Popen(
+                cmd,
+                stdout=sys.stderr, stderr=sys.stderr,
+            )
+            logging.info("mcp server spawned (pid %s, port %d, allow_dangerous=%s)",
+                         _mcp_proc.pid, port, cfg["allow_dangerous"])
+        except Exception as e:
+            logging.error("spawn mcp server failed: %s", e)
 
 # HTML 首页缓存（单条目，缓存 / 和 /index.html 的注入后 HTML）
 _html_cache = {}
@@ -1332,6 +1599,50 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 self._send_json(500, {"success": False, "error": str(e)})
+            return True
+
+        if path == "/api/mcp/config":
+            if self.command == "GET":
+                cfg = _read_mcp_conf()
+                port = cfg["port"] or (get_target_port() + 1)
+                self._send_json(200, {
+                    "success": True,
+                    "enabled": cfg["enabled"],
+                    "port": port,
+                    "allowDangerous": cfg["allow_dangerous"],
+                    "apiKey": _get_webapi_key(),
+                    "webuiPort": get_target_port(),
+                })
+                return True
+            if self.command == "POST":
+                try:
+                    length = int(self.headers.get("Content-Length", 0))
+                    data = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                    enabled = bool(data.get("enabled"))
+                    port = int(data.get("port") or 0)
+                    allow_dangerous = bool(data.get("allowDangerous"))
+                except Exception:
+                    self._send_json(400, {"success": False, "error": "请求体格式错误"})
+                    return True
+                if not (1024 <= port <= 65535):
+                    self._send_json(400, {"success": False, "error": "端口需在 1024-65535 之间"})
+                    return True
+                _write_mcp_conf(enabled, port, allow_dangerous)
+                _ensure_mcp_proc()
+                self._send_json(200, {"success": True})
+                return True
+            self._send_json(405, {"success": False, "error": "Method not allowed"})
+            return True
+
+        if path == "/api/mcp/key/rotate" and self.command == "POST":
+            status, resp = _call_qbt_api("POST", "/api/v2/app/rotateAPIKey")
+            if status == 200 and isinstance(resp, dict) and resp.get("apiKey"):
+                self._send_json(200, {"success": True, "apiKey": resp["apiKey"]})
+            else:
+                self._send_json(500, {
+                    "success": False,
+                    "error": "轮换失败 (HTTP %s)，需要 qBittorrent 5.2+ 且应用正在运行" % status,
+                })
             return True
 
         if path == "/api/update/check":
@@ -1912,6 +2223,7 @@ class ThreadedUnixHTTPServer(http.server.HTTPServer):
 # ---------------------------------------------------------------------------
 def cleanup(signum, frame):
     logging.info("received signal %d, shutting down", signum)
+    _kill_mcp_proc()
     if hasattr(server, '_executor'):
         server._executor.shutdown(wait=False)
     server.server_close()
@@ -1947,11 +2259,16 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, cleanup)
 
     logging.info("gateway-proxy started: %s -> %s:%d", SOCK_PATH, TARGET_HOST, INITIAL_PORT)
+
+    # 按配置拉起 MCP 服务（设置面板可随时开关/改端口，热重启）
+    _ensure_mcp_proc()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
 
+    _kill_mcp_proc()
     server.server_close()
     if ProxyHandler._conn_pool:
         ProxyHandler._conn_pool.close_all()

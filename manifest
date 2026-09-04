@@ -1,7 +1,7 @@
 appname = qbittorrent
 version = 5.2.3.2
 display_name = qBittorrent
-desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🎨 <b>智能适配：</b>VueTorrent正常在iframe中使用 | 原生WebUI自动弹出新标签页解决iframe兼容问题<br><br>🔔 <b>更新检测：</b>VueTorrent与原生WebUI均支持自动检测GitHub最新版本，一键更新<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
+desc = <b>功能强大的BitTorrent下载工具</b>，支持RSS订阅、搜索引擎、速度控制、WebUI远程访问。<br><br>🎨 <b>智能适配：</b>VueTorrent正常在iframe中使用 | 原生WebUI自动弹出新标签页解决iframe兼容问题<br><br>🤖 <b>MCP AI 接入：</b>内置MCP Server，Claude / Cursor / Cherry Studio等AI客户端可直接管理下载任务<br><br>🔔 <b>更新检测：</b>VueTorrent与原生WebUI均支持自动检测GitHub最新版本，一键更新<br><br>🐛 <b>问题反馈：</b><a href="https://github.com/sushazhi/fnos-qbittorrent/issues" target="_blank">GitHub Issues</a>
 
 # 系统要求
 platform = all
@@ -25,4 +25,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.2.3.2<br>1. WebUI 监听地址改为 0.0.0.0，支持局域网直接访问 WebUI / WebUI API<br>2. 修复复制 Web API Key 时报 toast.copy.error 的问题
+changelog = v5.2.3.2<br>1. 新增 MCP 服务：AI 客户端可通过 MCP 协议直接管理下载任务<br>2. 标题栏新增 MCP 设置面板：开关、端口、API Key 复制与重新生成<br>3. 高危操作默认禁用（删除/停止/开始任务），面板可开启<br>4. 新增通用 API 透传，完整接入 qBittorrent WebUI API<br>5. WebUI 监听地址改为 0.0.0.0，支持局域网直接访问 WebUI / WebUI API<br>6. 修复复制 Web API Key 时报 toast.copy.error 的问题

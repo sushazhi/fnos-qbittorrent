@@ -385,7 +385,7 @@ def main():
     shutil.copy2(daemon_cache, daemon_target)
 
     # 复制 Python 脚本
-    for script in ["gateway-proxy.py", "qbt_password.py"]:
+    for script in ["gateway-proxy.py", "qbt_password.py", "mcp-server.py"]:
         p = os.path.join(PROJECT_DIR, "app", "bin", script)
         if os.path.exists(p):
             shutil.copy2(p, os.path.join(BUILD_DIR, "app", "bin", script))

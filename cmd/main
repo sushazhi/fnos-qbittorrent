@@ -7,6 +7,7 @@ DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 PROXY_PID_FILE="${TRIM_PKGTMP}/${APP_NAME}-proxy.pid"
+MCP_PID_FILE="${TRIM_PKGTMP}/${APP_NAME}-mcp.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
 
 PROXY_SCRIPT="${BIN_DIR}/gateway-proxy.py"
@@ -121,6 +122,16 @@ stop_proxy() {
     echo "proxy stopped"
 }
 
+# MCP 服务进程由 gateway-proxy 托管（启动/热重启见其内部 _ensure_mcp_proc），
+# 这里仅在停止流程做兜底清理，防止 proxy 被 kill -9 后 MCP 沦为孤儿
+stop_mcp() {
+    if [ -f "$MCP_PID_FILE" ]; then
+        rm -f "$MCP_PID_FILE"
+    fi
+    pkill -f "mcp-server.py.*--config ${CONFIG_FILE}" 2>/dev/null || true
+    return 0
+}
+
 case "$1" in
 start)
     if [ -f "$PID_FILE" ]; then
@@ -139,6 +150,7 @@ start)
             echo $EXISTING_PID > "$PID_FILE"
             echo "${APP_NAME} is already running (PID: $EXISTING_PID, recovered)"
             # 进程在但网关代理可能不在，确保代理运行，避免进程存活而入口不可用
+            # （MCP 服务由代理托管，无需单独处理）
             if [ ! -S "$GATEWAY_SOCK" ]; then
                 start_proxy
             elif [ -f "$PROXY_PID_FILE" ] && ! kill -0 "$(cat "$PROXY_PID_FILE" 2>/dev/null)" 2>/dev/null; then
@@ -277,6 +289,7 @@ EOF
 
 stop)
     stop_proxy
+    stop_mcp
 
     PID=""
     if [ -f "$PID_FILE" ]; then
