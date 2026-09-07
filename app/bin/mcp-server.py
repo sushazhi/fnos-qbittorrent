@@ -2,7 +2,7 @@
 """
 qBittorrent MCP Server — Streamable HTTP 传输，零第三方依赖（仅标准库）。
 
-让 AI 客户端（CodeBuddy / Cherry Studio / Claude 等）通过 MCP 协议管理 qBittorrent：
+让 AI 客户端（DeepSeek Harness / Hermes / QwenPaw / OpenClaw 等）通过 MCP 协议管理 qBittorrent：
 
   客户端 --HTTP POST /mcp (JSON-RPC 2.0)--> 本服务 --HTTP--> qBittorrent WebUI API (127.0.0.1)
 

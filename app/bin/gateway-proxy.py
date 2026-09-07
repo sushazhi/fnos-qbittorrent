@@ -525,7 +525,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     'box.appendChild(h);'
     'var tip=document.createElement("div");'
     'tip.className="qbGTip";'
-    'tip.textContent="开启后，AI 客户端（CodeBuddy / Cherry Studio / Claude 等）可通过 MCP 协议管理下载任务。";'
+    'tip.textContent="开启后，AI 客户端（DeepSeek Harness / Hermes / QwenPaw / OpenClaw 等）可通过 MCP 协议管理下载任务。";'
     'box.appendChild(tip);'
     'var row1=document.createElement("label");'
     'row1.className="qbGRow";row1.style.cursor="pointer";'

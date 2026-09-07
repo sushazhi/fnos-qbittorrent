@@ -25,7 +25,7 @@
 | 🛡️ **IP过滤** | 支持IP过滤列表和加密协议 |
 | 🔔 **更新检测** | 自动检测GitHub最新版本，VueTorrent与原生WebUI均支持，按架构匹配 |
 | 🔄 **动态端口** | WebUI改端口后代理自动跟随，无需重启 |
-| 🤖 **MCP AI 接入** | 内置 MCP Server，CodeBuddy / Cherry Studio / Claude 等 AI 客户端可直接管理下载任务 |
+| 🤖 **MCP AI 接入** | 内置 MCP Server，DeepSeek Harness / Hermes / QwenPaw / OpenClaw 等 AI 客户端可直接管理下载任务 |
 
 ---
 
@@ -162,7 +162,7 @@ curl -s -b cookies.txt "http://<NAS_IP>:8080/api/v2/torrents/info"
 
 ## 🤖 MCP 服务（AI 客户端接入）
 
-应用内置 **qBittorrent MCP Server**（Streamable HTTP 传输，零第三方依赖），让 AI 客户端（CodeBuddy / Cherry Studio / Claude 等）通过 MCP 协议直接管理下载任务：
+应用内置 **qBittorrent MCP Server**（Streamable HTTP 传输，零第三方依赖），让 AI 客户端（DeepSeek Harness / Hermes / QwenPaw / OpenClaw 等）通过 MCP 协议直接管理下载任务：
 
 ```
 AI 客户端 ──HTTP POST /mcp (JSON-RPC 2.0)──> MCP Server (:8081) ──> 127.0.0.1:8080 qBittorrent WebUI API
@@ -263,15 +263,7 @@ qBittorrent WebUI API 有 100+ 端点，除上述专属工具外，`qb_api_reque
 
 详见 [GitHub Releases](https://github.com/sushazhi/fnos-qbittorrent/releases)
 
----
 
-## 🤝 支持与反馈
-
-- 🐛 [报告问题](https://github.com/sushazhi/fnos-qbittorrent/issues)
-- 💬 [飞牛论坛](https://club.fnnas.com/)
-- 📖 [fnOS开发文档](https://developer.fnnas.com/)
-
----
 
 ## 📁 项目结构
 
@@ -322,14 +314,11 @@ fnos-qbittorrent/
 | [**qBittorrent**](https://github.com/qbittorrent/qBittorrent) | 核心 BT 下载引擎 (`qbittorrent-nox`) | [GPL-2.0](https://github.com/qbittorrent/qBittorrent/blob/master/COPYING) |
 | [**VueTorrent**](https://github.com/VueTorrent/VueTorrent) | 现代 WebUI 界面 | [MIT](https://github.com/VueTorrent/VueTorrent/blob/master/LICENSE) |
 | [**userdocs/qbittorrent-nox-static**](https://github.com/userdocs/qbittorrent-nox-static) | 静态编译的 qBittorrent-nox 二进制 | [GPL-2.0](https://github.com/userdocs/qbittorrent-nox-static/blob/main/LICENSE) |
-| [**fnOS**](https://www.fnnas.com/) | 飞牛 NAS 操作系统（统一网关） | 专有 |
-| [**fnpack**](https://static2.fnnas.com/fnpack/) | fnOS 应用打包工具 | 专有 |
 
 ### 致谢
 
 - [@userdocs](https://github.com/userdocs) — 提供跨平台静态编译的 qBittorrent-nox
 - [@VueTorrent](https://github.com/VueTorrent) — 优秀的现代化 qBittorrent WebUI
-- 飞牛团队（fnOS）— 提供统一网关和应用平台
 
 ---
 
