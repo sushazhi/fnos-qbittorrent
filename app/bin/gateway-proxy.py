@@ -178,6 +178,194 @@ def _get_update_check_js():
         _UPDATE_CHECK_JS_CACHED = '/* update-check.js not found */'
     return _UPDATE_CHECK_JS_CACHED
 
+# ---------------------------------------------------------------------------
+# 系统语言注入（让 VueTorrent 首屏直接使用 fnOS 宿主语言）
+# ---------------------------------------------------------------------------
+# VueTorrent 的界面语言既不读 navigator.language，也不读 <html lang>：
+# 它的 vue-i18n 初始 locale 硬编码为 'en'（src/locales/index.ts 的 defaultLocale），
+# 只有从 Pinia 持久化设置里读到 language 后才切换
+# （src/stores/vuetorrent.ts：language=ref('en') + watch(language,setLanguage)）。
+# 持久化键 = storeKeysPrefix('vuetorrent') + '_' + storageItems.key('webuiSettings')，
+# 即 localStorage['vuetorrent_webuiSettings']；恢复用 store.$patch()，属浅合并，
+# 因此写入只含 language 的部分 JSON 是安全的，不会冲掉其它设置。
+#
+# 这里在 <head> 末尾注入一段内联脚本（早于 VueTorrent 的 <script type="module">
+# 执行），把 fnOS 语言写进该持久化键，做到首屏即系统语言、不出现中英闪切。
+#
+# 语言来源（对应 developer.fnnas.com/api/platform-config）：
+#   1) TRIM_SYS_LANGUAGE 环境变量：同步可用，用于首屏免 reload
+#   2) 后端 API trim.system.getPlatformConfig 的 systemLanguage：
+#      需在 config/resource 声明 api-scope，作为环境变量缺失时的服务端兜底
+#   3) 前端 JS SDK getPlatformConfig().language（宿主界面语言）/ systemLanguage：
+#      官方接口、无需声明 api-scope，作为异步权威值校正
+#
+# 用标记位 MARK 记录「上一次由本脚本写入的语言」，用于区分「我们写的」与
+# 「用户在 VueTorrent 设置里手选的」：一旦用户手选过，永久让位、不再覆盖。
+_VUETORRENT_SETTINGS_KEY = "vuetorrent_webuiSettings"
+# VueTorrent 2.x 支持的 locale（src/locales/index.ts 的 Locales 枚举）
+_SYS_LANG_SUPPORTED = (
+    "cs", "de", "en", "es", "fr", "hu", "it", "ja", "ko", "nl", "pl", "ru",
+    "tr", "uk", "pt-BR", "ro-RO", "zh-Hans", "zh-Hant",
+)
+# 标记键：值为「本脚本上一次写入的语言」
+_SYS_LANG_MARK_KEY = "qb_syslang"
+
+_SYS_LANG_SCRIPT_TEMPLATE = r"""<script>
+(function(){
+var KEY=__KEY__;
+var MARK=__MARK__;
+var LOCALES=__LOCALES__;
+function mapLang(r){
+  if(!r)return "";
+  var s=String(r).replace(/_/g,"-").replace(/^\s+|\s+$/g,"");
+  if(!s)return "";
+  var low=s.toLowerCase(),i;
+  for(i=0;i<LOCALES.length;i++){if(LOCALES[i].toLowerCase()===low)return LOCALES[i];}
+  if(low.indexOf("zh")===0){
+    if(low.indexOf("hant")>-1||low.indexOf("tw")>-1||low.indexOf("hk")>-1||low.indexOf("mo")>-1)return "zh-Hant";
+    return "zh-Hans";
+  }
+  if(low.indexOf("pt")===0)return "pt-BR";
+  if(low.indexOf("ro")===0)return "ro-RO";
+  var p=low.split("-")[0];
+  for(i=0;i<LOCALES.length;i++){if(LOCALES[i].toLowerCase()===p)return p;}
+  return "";
+}
+function readStored(){
+  try{
+    var r=localStorage.getItem(KEY);
+    if(r===null)return {};
+    var o=JSON.parse(r);
+    return (o&&typeof o==="object")?o:null;
+  }catch(e){return null;}
+}
+function readMark(){try{return localStorage.getItem(MARK)||"";}catch(e){return "";}}
+/* 返回 true 表示改动了持久化设置，需 reload 才能生效 */
+window.__qbApplySysLang=function(raw,isBootstrap){
+  var L=mapLang(raw);
+  if(!L)return false;
+  window.__QB_SYS_LANG=L;
+  try{document.documentElement.setAttribute("lang",L);}catch(e){}
+  try{
+    var mark=readMark();
+    /* 首屏引导只做一次：已有标记说明本浏览器已处理过，绝不回写覆盖 SDK 校正结果 */
+    if(isBootstrap&&mark)return false;
+    var obj=readStored();
+    if(obj===null)return false;
+    var cur=obj.language||"";
+    if(mark){
+      if(cur!==mark)return false;      /* 用户已手选其它语言：永久让位 */
+      if(cur===L)return false;
+    }else{
+      if(cur===L)return false;
+      if(cur&&cur!=="en")return false; /* 用户手选过：尊重 */
+      if(!cur&&L==="en")return false;  /* 默认即英文，无需写入 */
+    }
+    obj.language=L;
+    localStorage.setItem(KEY,JSON.stringify(obj));
+    localStorage.setItem(MARK,L);
+    return true;
+  }catch(e){return false;}
+};
+try{window.__qbApplySysLang(__RAW__,true);}catch(e){}
+})();
+</script>"""
+
+_SYS_LANG_SCRIPT_CACHED = None
+
+
+def _map_sys_lang(raw):
+    """fnOS 语言（zh-CN、zh_TW、en-US、zh-Hans...）→ VueTorrent 支持的 locale。"""
+    s = str(raw or "").strip().replace("_", "-")
+    if not s:
+        return ""
+    low = s.lower()
+    for loc in _SYS_LANG_SUPPORTED:
+        if loc.lower() == low:
+            return loc
+    if low.startswith("zh"):
+        if any(k in low for k in ("hant", "tw", "hk", "mo")):
+            return "zh-Hant"
+        return "zh-Hans"
+    if low.startswith("pt"):
+        return "pt-BR"
+    if low.startswith("ro"):
+        return "ro-RO"
+    primary = low.split("-")[0]
+    if primary in _SYS_LANG_SUPPORTED:
+        return primary
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# 系统语言解析（环境变量 → 后端开放 API）
+# ---------------------------------------------------------------------------
+# 后端起兜底作用：TRIM_SYS_LANGUAGE 缺失时也可拿到系统语言；
+# 同时供 trim.file.convertPath 的 language 参数使用（语义路径按系统语言显示）。
+# 缓存策略：None=尚未查询，""=查询失败/无值（只查一次，避免每请求一次 socket 往返）
+_SYS_LANG_API_CACHE = None
+
+
+def _get_platform_system_language():
+    """后端开放 API trim.system.getPlatformConfig 的 systemLanguage。
+
+    需在 config/resource 声明 api-scope `trim.system.getPlatformConfig`；
+    调用失败（无 token / 无 socket / 旧系统不支持）时返回空串，静默降级。
+    """
+    global _SYS_LANG_API_CACHE
+    if _SYS_LANG_API_CACHE is None:
+        val = ""
+        data = _call_trim_api("trim.system.getPlatformConfig")
+        if isinstance(data, dict):
+            val = str(data.get("systemLanguage") or "").strip()
+        _SYS_LANG_API_CACHE = val
+        logging.info("fnOS API systemLanguage: %r", val)
+    return _SYS_LANG_API_CACHE
+
+
+def _get_raw_system_language():
+    """系统语言原始值：TRIM_SYS_LANGUAGE 环境变量优先，其次后端开放 API。"""
+    val = (os.environ.get("TRIM_SYS_LANGUAGE") or "").strip()
+    if val:
+        return val
+    return _get_platform_system_language()
+
+
+def _normalize_lang_tag(raw):
+    """归一化为开放 API 期望的 language 形式（如 zh_CN.UTF-8 → zh-CN）。"""
+    s = str(raw or "").strip().split(".", 1)[0].replace("_", "-")
+    if not s or s in ("C", "POSIX"):
+        return ""
+    parts = [p for p in s.split("-") if p]
+    if not parts:
+        return ""
+    out = [parts[0].lower()]
+    for p in parts[1:]:
+        # 两字母为地区码（大写），四字母为脚本码（首字母大写，如 Hant）
+        out.append(p.upper() if len(p) == 2 else p.title())
+    return "-".join(out)
+
+
+def _get_sys_lang_script():
+    """系统语言注入脚本（缓存；raw 为空时也注入，供 SDK 异步校正调用）。"""
+    global _SYS_LANG_SCRIPT_CACHED
+    if _SYS_LANG_SCRIPT_CACHED is not None:
+        return _SYS_LANG_SCRIPT_CACHED
+    raw = _get_raw_system_language()
+    mapped = _map_sys_lang(raw)
+    if mapped:
+        logging.info("system language: %s -> VueTorrent locale %s", raw, mapped)
+    else:
+        logging.info("system language unavailable from env/API, "
+                     "will follow fnOS SDK getPlatformConfig() language")
+    js = (_SYS_LANG_SCRIPT_TEMPLATE
+          .replace("__KEY__", json.dumps(_VUETORRENT_SETTINGS_KEY))
+          .replace("__MARK__", json.dumps(_SYS_LANG_MARK_KEY))
+          .replace("__LOCALES__", json.dumps(list(_SYS_LANG_SUPPORTED)))
+          .replace("__RAW__", json.dumps(raw)))
+    _SYS_LANG_SCRIPT_CACHED = js.encode()
+    return _SYS_LANG_SCRIPT_CACHED
+
 _INJECT_SCRIPT_TEMPLATE = (
     '<script>window.QBITTORRENT_APP_ARCH="%s";window.QBITTORRENT_APP_VERSION="%s";</script><script>'
     '(function(){'
@@ -401,12 +589,16 @@ _INJECT_SCRIPT_TEMPLATE = (
     'setTimeout(function(){sdk.connect();},0);'
     ''
     '/* ===== 1. 主题/语言监听 ===== */'
+    '/* 语言：交给 __qbApplySysLang（head 内联脚本）写入 VueTorrent 持久化设置，仅在真正改动时 reload；主题仍写 data-theme 供 CSS 使用 */'
     'sdk.$on("os/theme",function(t){document.documentElement.setAttribute("data-theme",t);});'
-    'sdk.$on("os/language",function(l){document.documentElement.setAttribute("lang",l);});'
+    'sdk.$on("os/language",function(l){'
+      'try{if(window.__qbApplySysLang&&window.__qbApplySysLang(l))location.reload();}catch(e){}'
+    '});'
     'try{'
       'sdk.getPlatformConfig().then(function(c){'
         'if(c&&c.theme)document.documentElement.setAttribute("data-theme",c.theme);'
-        'if(c&&c.language)document.documentElement.setAttribute("lang",c.language);'
+        'var lg=c&&(c.language||c.systemLanguage);'
+        'if(lg){try{if(window.__qbApplySysLang&&window.__qbApplySysLang(lg))location.reload();}catch(e){}}'
       '}).catch(function(){});'
     '}catch(e){}'
     ''
@@ -1182,8 +1374,12 @@ def decompress(data, encoding):
 # HTML 重写
 # ---------------------------------------------------------------------------
 def rewrite_html(data):
-    """注入 JS polyfill + 重写 src/href/action 绝对路径。"""
-    data = data.replace(b'</head>', _get_inject_script_bytes() + b'</head>', 1)
+    """注入系统语言脚本 + JS polyfill + 重写 src/href/action 绝对路径。"""
+    data = data.replace(
+        b'</head>',
+        _get_sys_lang_script() + _get_inject_script_bytes() + b'</head>',
+        1,
+    )
     data = _RE_HTML_ATTR.sub(rb'\1=\2' + PREFIX.encode() + rb'/', data)
     return data
 
@@ -1530,11 +1726,12 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                                 break
                 result = {"success": True, "path": save_path, "displayPath": save_path, "hasACL": True}
                 if save_path:
-                    # 路径转换：需要 language 参数
+                    # 路径转换：language 必传，按系统语言返回语义路径
+                    # （英文系统下也能得到正确的共享目录显示名）
                     try:
                         display = _call_trim_api("trim.file.convertPath", {
                             "path": [save_path],
-                            "language": "zh-CN",
+                            "language": _normalize_lang_tag(_get_raw_system_language()) or "zh-CN",
                         })
                         if display and display.get("status") == 0:
                             sem = display.get("result", [{}])[0].get("semanticPath", "")
@@ -2259,6 +2456,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, cleanup)
 
     logging.info("gateway-proxy started: %s -> %s:%d", SOCK_PATH, TARGET_HOST, INITIAL_PORT)
+
+    # 预热系统语言查询：环境变量缺失时会走 Unix socket 调用开放 API，
+    # 放到后台线程避免第一次页面请求同步阻塞在 socket 往返上
+    threading.Thread(target=_get_raw_system_language, daemon=True).start()
 
     # 按配置拉起 MCP 服务（设置面板可随时开关/改端口，热重启）
     _ensure_mcp_proc()

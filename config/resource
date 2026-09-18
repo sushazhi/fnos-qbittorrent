@@ -3,7 +3,8 @@
         "trim.file.path",
         "trim.file.userAcl",
         "trim.file.userAccess",
-        "trim.file.sharedAccess"
+        "trim.file.sharedAccess",
+        "trim.system.getPlatformConfig"
     ],
     "data-share": {
         "shares": [
