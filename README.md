@@ -128,20 +128,26 @@ python build.py --force
 |------|--------|
 | 系统版本 | fnOS v1.1.3104+ |
 | 访问地址 | `http://<NAS_IP>:5666/app/qbittorrent/` |
-| WebUI 监听地址 | `0.0.0.0`（所有接口） |
+| WebUI 监听地址 | `0.0.0.0`（所有 **IPv4** 接口） |
 | WebUI 端口 | `8080` |
 | LocalHostAuth | `false`（允许从非本机发起认证） |
 
 > 🔓 网关模式下无需手动登录，统一网关已保证用户身份认证
+>
+> ⚠️ **关于 IPv6**：默认监听地址 `0.0.0.0` 仅绑定 IPv4 接口，**无法通过 IPv6 地址访问**。如需 IPv6 访问，在 qBittorrent **设置 → WebUI → IP 地址绑定** 中改为 `*`（或留空，`*` 与留空等价，绑定所有 IPv4 + IPv6 接口），保存后重启应用，即可用 `http://[IPv6地址]:8080/` 访问。详见下方「外部访问」。
 
 ### 🌐 WebUI / API 外部访问
 
-qBittorrent WebUI 默认监听 `0.0.0.0`（所有接口），除 fnOS 网关入口外，也可通过局域网地址直接访问 WebUI 及 WebUI API：
+qBittorrent WebUI 默认监听 `0.0.0.0`（所有 **IPv4** 接口），除 fnOS 网关入口外，也可通过局域网地址直接访问 WebUI 及 WebUI API：
 
 ```
-http://<NAS_IP>:8080/               # WebUI
+http://<NAS_IP>:8080/               # WebUI（IPv4）
 http://<NAS_IP>:8080/api/v2/...     # WebUI API（如 auth/login、torrents/info 等）
 ```
+
+> 🌐 **IPv6 访问**：默认 `0.0.0.0` 不绑定 IPv6 接口，纯 IPv6 环境下会无法访问。开启方式：在 qBittorrent **设置 → WebUI → IP 地址绑定** 中改为 `*`（或留空，绑定所有 IPv4 + IPv6 接口，与留空等价），保存后重启应用即可用 `http://[IPv6地址]:8080/` 访问。该改动不影响 fnOS 桌面 iframe 访问（网关代理始终从本机 `127.0.0.1:8080` 转发）。
+>
+> 🔒 **安全提醒**：改为 `*` 后 WebUI 会同时监听 IPv6，若 NAS 拥有公网 IPv6 地址，WebUI 将直接暴露到互联网。请务必使用强密码，并在路由器/防火墙限制来源，避免被全网扫描访问。
 
 - 网关代理（`gateway-proxy.py`）从本机 `127.0.0.1:8080` 转发，改动监听地址不影响 fnOS 桌面 iframe 访问。
 - WebUI/API 仍受 qBittorrent 用户名+密码保护（SSO 模式下为随机内部凭证），需先通过 `auth/login` 获取 cookie 才能调用 API。
