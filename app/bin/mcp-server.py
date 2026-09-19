@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2024-2026 yukihana
+# SPDX-License-Identifier: GPL-2.0
 """
 qBittorrent MCP Server — Streamable HTTP 传输，零第三方依赖（仅标准库）。
 

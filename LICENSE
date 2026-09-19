@@ -333,3 +333,27 @@ proprietary programs.  If your program is a subroutine library, you may
 consider it more useful to permit linking proprietary applications with the
 library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
+
+------------------------------------------------------------------------------
+
+本项目（qBittorrent for fnOS）版权声明：
+
+    Copyright (C) 2024-2026 yukihana
+
+本项目是 qBittorrent 与 VueTorrent 的封装/网关适配层，整体以
+GNU General Public License version 2（GPL-2.0）授权分发。bundled 的上游组件
+许可证与对应源代码获取方式见随包提供的 THIRD_PARTY_LICENSES.md。
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by the
+    Free Software Foundation; either version 2 of the License, or (at your
+    option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.

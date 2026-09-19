@@ -367,6 +367,11 @@ def main():
         p = os.path.join(PROJECT_DIR, icon)
         if os.path.exists(p):
             shutil.copy2(p, BUILD_DIR)
+    # 复制许可证与第三方许可说明，随 fpk 分发以满足 GPL-2.0 / MIT 合规要求
+    for lic in ["LICENSE", "THIRD_PARTY_LICENSES.md"]:
+        p = os.path.join(PROJECT_DIR, lic)
+        if os.path.exists(p):
+            shutil.copy2(p, BUILD_DIR)
     for ui_sub in ["config", "images", "index.html"]:
         p = os.path.join(PROJECT_DIR, "app", "ui", ui_sub)
         if os.path.exists(p):
@@ -410,6 +415,11 @@ def main():
         screenshots = os.path.join(vue_target, "public", "screenshots")
         if os.path.exists(screenshots):
             shutil.rmtree(screenshots, ignore_errors=True)
+        # 保留 VueTorrent 的 MIT 许可证文本（MIT 要求随分发保留版权与许可声明）
+        vue_license_url = f"https://raw.githubusercontent.com/VueTorrent/VueTorrent/v{vue_ver}/LICENSE"
+        if not download(vue_license_url, os.path.join(vue_target, "LICENSE"),
+                       f"VueTorrent LICENSE {vue_ver}", "vuetorrent-license", vue_ver, force):
+            log("  Warning: 未能下载 VueTorrent LICENSE，fpk 内可能缺少 MIT 声明", "yellow")
         log("  VueTorrent ready", "green")
 
     # 复制 update-check.js

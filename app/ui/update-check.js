@@ -1,4 +1,9 @@
 /**
+ * Copyright (C) 2024-2026 yukihana
+ * SPDX-License-Identifier: GPL-2.0
+ */
+
+/**
  * qBittorrent Update Check - 注入到 WebUI 的更新检测脚本
  *
  * 功能：

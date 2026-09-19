@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2024-2026 yukihana
+# SPDX-License-Identifier: GPL-2.0
 """
 fnOS 统一网关反向代理 — qBittorrent WebUI 代理
 

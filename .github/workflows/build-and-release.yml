@@ -103,6 +103,14 @@ jobs:
 
           rm -rf vuetorrent vuetorrent.zip
 
+          echo "Fetching VueTorrent LICENSE (MIT)..."
+          if [ "$VUETORRENT_VERSION" = "latest" ]; then
+            VUE_LICENSE_URL="https://raw.githubusercontent.com/VueTorrent/VueTorrent/master/LICENSE"
+          else
+            VUE_LICENSE_URL="https://raw.githubusercontent.com/VueTorrent/VueTorrent/${VUETORRENT_VERSION}/LICENSE"
+          fi
+          wget -q "$VUE_LICENSE_URL" -O app/ui/vuetorrent/LICENSE || echo "WARNING: failed to fetch VueTorrent LICENSE (MIT notice may be missing in package)"
+
       - name: Inject update check into VueTorrent WebUI
         run: |
           if [ -f app/ui/update-check.js ]; then
@@ -187,16 +195,13 @@ jobs:
           chmod +x fnpack
 
           echo "Verifying required files..."
-          for file in manifest ICON.PNG ICON_256.PNG README.md app cmd config wizard; do
+          for file in manifest ICON.PNG ICON_256.PNG README.md LICENSE THIRD_PARTY_LICENSES.md app cmd config wizard; do
             if [ ! -e "$file" ]; then
               echo "ERROR: Required file/directory '$file' not found!"
               exit 1
             fi
             echo "  ✓ $file"
           done
-
-          echo "Removing LICENSE from package (not bundled)..."
-          rm -f LICENSE
 
           echo "Running fnpack build..."
           ./fnpack build .
