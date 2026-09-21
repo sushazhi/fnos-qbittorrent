@@ -75,6 +75,14 @@ _RE_CONFIG_PORT = re.compile(r'^WebUI\\Port=(\d+)', re.MULTILINE)
 _RE_REFERER = re.compile(r'^https?://[^/]+')
 _RE_HTML_ATTR = re.compile(rb'(src|href|action)=([\'"])/(?!/?(?:app|cgi)/)')
 _RE_SAME_COOKIE_ATTR = re.compile(r';\s*[Ss]ame[Ss]ite\s*=\s*[^;\s]+')
+# 内容哈希静态资源（Vite 产物形如 name-<hash>.js/css）：内容变则文件名变，可安全长缓存。
+# 只匹配 /assets/ 下的哈希文件，不碰 sw.js / update-check.js / index.html 等固定名文件。
+# 哈希段额外要求含大写或数字（Vite 使用 base64url 字符集，全小写纯字母的概率极低）：
+# 误判为"不可长缓存"只是少一次缓存（无害），误判为"可长缓存"会让可变文件永久滞留。
+_RE_HASHED_ASSET = re.compile(
+    r'^/assets/.+-(?=[A-Za-z0-9_-]*[0-9A-Z])[A-Za-z0-9_-]{8,}\.[A-Za-z0-9]{2,5}$'
+)
+_LONG_CACHE_VALUE = "public, max-age=31536000, immutable"
 
 # ---------------------------------------------------------------------------
 # 日志配置
@@ -367,6 +375,65 @@ def _get_sys_lang_script():
           .replace("__RAW__", json.dumps(raw)))
     _SYS_LANG_SCRIPT_CACHED = js.encode()
     return _SYS_LANG_SCRIPT_CACHED
+
+# ---------------------------------------------------------------------------
+# 首屏加载占位（解决首次打开"一片空白"无反馈）
+# ---------------------------------------------------------------------------
+# qBittorrent WebUI 对**所有**文件都发 Cache-Control: no-store，浏览器无法缓存
+# 任何资源；而 VueTorrent 是 ~345 个文件 / 17MB 的 SPA。经 FN Connect 等远程
+# 链路首次打开时，必须先把约 1.9MB（gzip）的关键模块图下完才可能有任何渲染，
+# 这期间 index.html 只有空的 <div id="app">，表现为长时间白屏。
+#
+# 占位层特性：
+#   - pointer-events:none，即使残留也绝不拦截点击
+#   - 250ms 内应用已挂载则不出现（正常热缓存打开无闪烁）
+#   - MutationObserver 监听 #app 子节点，Vue 一挂载立即淡出移除
+#   - 15s / 45s 递进提示，把"白屏"变成可解释的加载状态
+_BOOT_PLACEHOLDER = (
+    '<div id="qb-boot" style="position:fixed;left:0;top:0;right:0;bottom:0;'
+    'z-index:2147483000;display:flex;align-items:center;justify-content:center;'
+    'background:#f8fafc;color:#0f172a;opacity:0;transition:opacity .25s ease;'
+    'pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
+    '\'Microsoft YaHei\',sans-serif;">'
+      '<div style="text-align:center;max-width:80vw;">'
+        '<div style="width:34px;height:34px;margin:0 auto 16px;border:3px solid rgba(15,23,42,.15);'
+        'border-top-color:#0ea5e9;border-radius:50%;animation:qbBootSpin .9s linear infinite;"></div>'
+        '<div style="font-size:14px;letter-spacing:.3px;">正在加载 qBittorrent 界面…</div>'
+        '<div id="qb-boot-hint" style="margin-top:10px;font-size:12px;line-height:1.7;color:#64748b;"></div>'
+      '</div>'
+    '</div>'
+    '<style>@keyframes qbBootSpin{to{transform:rotate(360deg)}}'
+    '@media (prefers-color-scheme:dark){#qb-boot{background:#0f172a;color:#e2e8f0}'
+    '#qb-boot>div>div:first-child{border-color:rgba(226,232,240,.2);border-top-color:#38bdf8}'
+    '#qb-boot-hint{color:#94a3b8}}</style>'
+    '<script>'
+    '(function(){'
+    'var el=document.getElementById("qb-boot");'
+    'if(!el)return;'
+    'var t0=(new Date()).getTime(),done=false;'
+    'function ready(){var a=document.getElementById("app");return !!(a&&a.children&&a.children.length>0);}'
+    'function hide(){if(done)return;done=true;el.style.opacity="0";'
+    'setTimeout(function(){if(el&&el.parentNode)el.parentNode.removeChild(el);},400);}'
+    'function boot(){'
+    'if(ready()){hide();return;}'
+    'setTimeout(function(){if(!done&&!ready())el.style.opacity="1";},250);'
+    'try{var a=document.getElementById("app");'
+    'if(a&&window.MutationObserver){'
+    'var mo=new MutationObserver(function(){if(ready()){mo.disconnect();hide();}});'
+    'mo.observe(a,{childList:true,subtree:true});}}catch(e){}'
+    'var iv=setInterval(function(){'
+    'if(ready()){clearInterval(iv);hide();return;}'
+    'var s=Math.round(((new Date()).getTime()-t0)/1000);'
+    'var h=document.getElementById("qb-boot-hint");'
+    'if(!h)return;'
+    'if(s>=45){h.textContent="加载时间过长。请确认应用已在「应用中心」中启动，或稍后重试。";}'
+    'else if(s>=15){h.textContent="网络较慢，仍在加载（已等待 "+s+" 秒）…";}'
+    '},1000);'
+    '}'
+    'if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",boot);}else{boot();}'
+    '})();'
+    '</script>'
+).encode()
 
 _INJECT_SCRIPT_TEMPLATE = (
     '<script>window.QBITTORRENT_APP_ARCH="%s";window.QBITTORRENT_APP_VERSION="%s";</script><script>'
@@ -1376,13 +1443,19 @@ def decompress(data, encoding):
 # HTML 重写
 # ---------------------------------------------------------------------------
 def rewrite_html(data):
-    """注入系统语言脚本 + JS polyfill + 重写 src/href/action 绝对路径。"""
+    """注入系统语言脚本 + 首屏占位 + JS polyfill，并重写 src/href/action 绝对路径。"""
     data = data.replace(
         b'</head>',
         _get_sys_lang_script() + _get_inject_script_bytes() + b'</head>',
         1,
     )
     data = _RE_HTML_ATTR.sub(rb'\1=\2' + PREFIX.encode() + rb'/', data)
+    # 首屏加载占位（详见 _BOOT_PLACEHOLDER 注释）：远程链路首次打开时
+    # index.html 只有空的 <div id="app">，不注入占位就是长时间白屏
+    if b'</body>' in data:
+        data = data.replace(b'</body>', _BOOT_PLACEHOLDER + b'</body>', 1)
+    else:
+        data += _BOOT_PLACEHOLDER
     return data
 
 
@@ -1958,6 +2031,11 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         path = self._strip_prefix()
 
+        # 内容哈希资源：qBittorrent 对 WebUI 全部文件都发 no-store，
+        # 导致每次刷新/重开都要经远程链路重下数 MB。哈希文件名内容变即改名，
+        # 因此这里改写为 immutable 长缓存（仅 /assets/ 下的哈希文件）。
+        long_cache = bool(_RE_HASHED_ASSET.match(path))
+
         # API 路由（代理自定义 API，不走后端转发）
         if path.startswith("/api/"):
             if self._handle_api(path):
@@ -2036,6 +2114,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(c_status)
                 for k, v in c_headers:
                     self.send_header(k, v)
+                if long_cache:
+                    self.send_header("Cache-Control", _LONG_CACHE_VALUE)
                 if not is_head:
                     self.send_header("Content-Length", str(len(c_body)))
                     self.end_headers()
@@ -2151,7 +2231,13 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 # 跳过 hop-by-hop
                 if kl in ("transfer-encoding", "connection", "content-length"):
                     continue
+                # 内容哈希资源：丢弃后端的 no-store，稍后统一写长缓存
+                if kl == "cache-control" and long_cache:
+                    continue
                 self.send_header(key, value)
+
+            if long_cache:
+                self.send_header("Cache-Control", _LONG_CACHE_VALUE)
 
             # 读取并处理响应 body
             if is_html:
@@ -2191,7 +2277,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                         if k.lower() not in (
                             'transfer-encoding', 'connection',
                             'content-length', 'set-cookie',
-                        )
+                        ) and not (long_cache and k.lower() == 'cache-control')
                     ]
                     _static_cache.set(cache_key, resp.status, ch, data)
                     if not is_head:
