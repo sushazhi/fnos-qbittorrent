@@ -11,12 +11,22 @@ on:
         description: 'VueTorrent version (e.g., 2.33.0 or "latest")'
         required: false
         default: 'latest'
+      qbt_release_tag:
+        description: '上游 qbittorrent-nox-static 的 release tag（留空则按 manifest 版本自动匹配，如 release-5.2.4_v2.0.15）'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 env:
   VUETORRENT_VERSION: "latest"
+
+# 同一 tag 只允许一次构建：避免重复触发导致两个构建并发运行，
+# 以及第二个构建的 gh release create 因 Release 已存在而失败。
+concurrency:
+  group: build-and-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -50,8 +60,24 @@ jobs:
 
       - name: Fetch latest qBittorrent-nox release
         run: |
-          QBT_API="https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
-          QBT_RELEASE_TAG=$(curl -fsSL "$QBT_API" | grep '"tag_name"' | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' | grep "^release-${QBT_VER}_v" | head -1)
+          QBT_API="https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases?per_page=100"
+
+          # 优先使用调用方显式指定的 tag（每月同步工作流会传入它解析出的上游 tag），
+          # 保证「构建用的二进制」与「manifest/changelog 记录的版本」严格一致；
+          # 否则退化为按 qBittorrent 版本前缀匹配，并取 libtorrent 最高的一条。
+          QBT_RELEASE_TAG="${{ inputs.qbt_release_tag }}"
+
+          if [ -z "$QBT_RELEASE_TAG" ]; then
+            # tag 形如 release-<qbt>_v<libtorrent>：字段1=release-<qbt>，字段2=v<libtorrent>
+            # 两个字段都按版本序排序，取最高的一条，避免选中旧 libtorrent 的重建版本
+            QBT_RELEASE_TAG=$(curl -fsSL "$QBT_API" \
+              | grep '"tag_name"' \
+              | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/' \
+              | grep -E "^release-${QBT_VER//./\\.}_v[0-9]+(\.[0-9]+)*$" \
+              | sort -t_ -k1,1V -k2,2V \
+              | tail -1)
+          fi
+
           if [ -z "$QBT_RELEASE_TAG" ]; then
             echo "ERROR: No qBittorrent-nox release found for version ${QBT_VER}"
             exit 1
@@ -70,7 +96,20 @@ jobs:
 
           echo "Verifying binary..."
           file qbittorrent-nox
-          ./qbittorrent-nox --version 2>&1 || echo "Version check skipped"
+
+          VERSION_OUTPUT="$(./qbittorrent-nox --version 2>&1 || true)"
+          echo "${VERSION_OUTPUT}"
+
+          if [ -z "${VERSION_OUTPUT}" ]; then
+            echo "::warning::无法读取二进制版本，跳过版本一致性校验"
+          elif echo "${VERSION_OUTPUT}" | grep -qF "${QBT_VER}"; then
+            echo "二进制版本与 manifest 一致：qBittorrent ${QBT_VER}"
+          else
+            echo "ERROR: 二进制版本与 manifest 不一致"
+            echo "  期望包含: ${QBT_VER}"
+            echo "  实际输出: ${VERSION_OUTPUT}"
+            exit 1
+          fi
 
       - name: Download and prepare VueTorrent WebUI
         run: |

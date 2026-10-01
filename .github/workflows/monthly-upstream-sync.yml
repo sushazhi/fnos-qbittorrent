@@ -1,0 +1,352 @@
+name: Monthly Upstream Sync
+
+# 每月最后一天检查上游 qBittorrent 版本：
+#   有更新 -> 改写 manifest（version + changelog）-> 提交推送 -> 打 tag -> 触发 Build and Release
+#   无更新 -> 不产生任何提交；但若当前版本缺少远端 tag 或 GitHub Release，则自动补发
+#
+# 说明：GitHub Actions 的 cron 无法直接表达「每月最后一天」，
+# 因此采用「28-31 日触发 + 运行时判断明天是否为 1 号」的标准写法。
+
+on:
+  schedule:
+    # UTC 00:00（北京时间 08:00）；真正是否执行由 guard 步骤判断
+    - cron: '0 0 28-31 * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '忽略版本比较，强制产生一次更新（仅手动触发有效；会真实提交并发布，谨慎使用）'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: '只检查并改写 manifest，不提交、不推送（用于测试）'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # 提交 manifest、推送 tag
+  actions: write    # gh workflow run 触发 Build and Release
+
+concurrency:
+  group: monthly-upstream-sync
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: main
+
+jobs:
+  sync:
+    name: Check upstream & sync manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ------------------------------------------------------------------
+      # 1. 判断今天是否为当月最后一天（手动触发时直接放行）
+      # ------------------------------------------------------------------
+      - name: Check if today is the last day of the month
+        id: guard
+        run: |
+          set -euo pipefail
+
+          DRY_RUN="false"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            DRY_RUN="true"
+          fi
+          echo "dry_run=${DRY_RUN}" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "非定时触发（${{ github.event_name }}），跳过月末判断"
+            echo "is_last_day=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TOMORROW=""
+          if ! TOMORROW=$(date -u -d "+1 day" +%d); then
+            echo "::error::无法计算明天的日期，月末判断失败"
+            exit 1
+          fi
+          TODAY="$(date -u +%d)"
+          # 去掉前导 0（08 -> 8），否则 $((08)) / [ "08" -le 3 ] 会按八进制解析而报错
+          TODAY_NUM=$((10#${TODAY}))
+
+          if [ "${TOMORROW}" = "01" ]; then
+            echo "今天是本月最后一天（UTC），继续执行"
+            echo "is_last_day=true" >> "$GITHUB_OUTPUT"
+          elif [ "${TODAY_NUM}" -le 3 ]; then
+            # 定时任务在高负载下可能排队延迟到次日之后，此时「明天」已不是 1 号。
+            # cron 只在 28-31 日触发，因此 1-3 号的定时运行必然是被延迟的月末运行，
+            # 这里补一次判定，避免整月静默跳过。
+            # 重复执行是安全的：下游的 tag / Release 检查是幂等的。
+            echo "定时任务延迟到 ${TODAY} 号执行，按上月末处理"
+            echo "is_last_day=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "今天不是本月最后一天（UTC，明天是 ${TOMORROW} 日），跳过"
+            echo "is_last_day=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.guard.outputs.is_last_day == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SYNC_BRANCH }}
+          fetch-depth: 0
+
+      # ------------------------------------------------------------------
+      # 2. 配置 git 身份（独立步骤：打 tag 的补发路径不会经过提交步骤，
+      #    但 git tag -a 同样需要 committer 身份）
+      # ------------------------------------------------------------------
+      - name: Configure git identity
+        if: steps.guard.outputs.is_last_day == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # ------------------------------------------------------------------
+      # 3. 检查上游版本，有更新则改写 manifest
+      # ------------------------------------------------------------------
+      - name: Check upstream version and update manifest
+        id: check
+        if: steps.guard.outputs.is_last_day == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          FORCE_ARGS=()
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
+            FORCE_ARGS=(--force)
+          fi
+
+          python3 scripts/check_upstream.py \
+            --manifest manifest \
+            --write \
+            --github-output "$GITHUB_OUTPUT" \
+            "${FORCE_ARGS[@]}"
+
+      # ------------------------------------------------------------------
+      # 4. 决定「目标版本」以及是否需要发布
+      #    除正常「有更新」外，还覆盖两种部分失败后的自愈：
+      #      - 上次已提交 manifest 但打 tag 失败  -> 远端 tag 缺失
+      #      - tag 已推送但构建/发布失败          -> Release 缺失
+      #    这两种情况下 has_update 会是 false，若不检查就会永久漏发布。
+      #
+      #    本步骤用 always() 运行，保证即使检查步骤失败也仍会执行并写出
+      #    output，使摘要步骤能读到默认值（否则表格显示空值）。
+      #    注意：下游 tag / dispatch 步骤仍受隐式 success() 约束，
+      #    在前置步骤失败时会被跳过，不会读到这些值。
+      #
+      #    已知取舍：ls-remote / gh release view 的网络或鉴权错误会被当作
+      #    「不存在」处理，从而触发一次多余的补发尝试；该情况下后续
+      #    git tag / gh release create 会因已存在而报错，任务变红但不产生
+      #    错误发布（宁可见失败，不可静默漏发）。
+      # ------------------------------------------------------------------
+      - name: Resolve release version and publish status
+        id: release
+        if: always() && steps.guard.outputs.is_last_day == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # 先写出默认值：本步骤用 always() 运行，但 set -euo pipefail 下
+          # 中途失败会终止脚本，此时这四行保证 output 仍有定义（摘要步骤
+          # 用 always() 运行，若读不到会显示空值）。
+          # 下面的实际值会再次写入同名 key，GitHub 取最后一次出现的值。
+          {
+            echo "version="
+            echo "tag_missing=false"
+            echo "release_missing=false"
+            echo "should_publish=false"
+          } >> "$GITHUB_OUTPUT"
+
+          HAS_UPDATE="${{ steps.check.outputs.has_update }}"
+
+          if [ "${HAS_UPDATE}" = "true" ]; then
+            VERSION="${{ steps.check.outputs.new_version }}"
+          else
+            VERSION="${{ steps.check.outputs.current_version }}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          TAG_MISSING="false"
+          RELEASE_MISSING="false"
+          SHOULD_PUBLISH="false"
+
+          if [ -n "${VERSION}" ]; then
+            git fetch --tags --force origin
+
+            # --exit-code 下 exit 2 表示没有匹配的 ref
+            if ! git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+              TAG_MISSING="true"
+            fi
+
+            if ! gh release view "v${VERSION}" >/dev/null 2>&1; then
+              RELEASE_MISSING="true"
+            fi
+
+            if [ "${HAS_UPDATE}" = "true" ]; then
+              SHOULD_PUBLISH="true"
+              echo "有上游更新，目标版本 ${VERSION}"
+            elif [ "${TAG_MISSING}" = "true" ]; then
+              SHOULD_PUBLISH="true"
+              echo "::warning::上游无更新，但远端缺少 tag v${VERSION}，执行补发"
+            elif [ "${RELEASE_MISSING}" = "true" ]; then
+              SHOULD_PUBLISH="true"
+              echo "::warning::上游无更新，但 v${VERSION} 缺少 GitHub Release，执行补发"
+            else
+              echo "上游无更新且 v${VERSION} 已完整发布，跳过（不提交、不构建）"
+            fi
+          else
+            echo "未取得 manifest 版本（检查步骤未成功），跳过"
+          fi
+
+          {
+            echo "tag_missing=${TAG_MISSING}"
+            echo "release_missing=${RELEASE_MISSING}"
+            echo "should_publish=${SHOULD_PUBLISH}"
+          } >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # 5. 摘要（放在 release 之后，确保能读到其 output）
+      # ------------------------------------------------------------------
+      - name: Write job summary
+        if: always() && steps.guard.outputs.is_last_day == 'true'
+        run: |
+          set -euo pipefail
+
+          HAS_UPDATE="${{ steps.check.outputs.has_update }}"
+          WARNING="${{ steps.check.outputs.warning }}"
+
+          {
+            echo "## 上游版本检查"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 当前 manifest 版本 | \`${{ steps.check.outputs.current_version }}\` |"
+            echo "| 当前 qBittorrent / libtorrent | ${{ steps.check.outputs.current_qbt }} / ${{ steps.check.outputs.current_libtorrent }} |"
+            echo "| 上游最新 tag | \`${{ steps.check.outputs.upstream_tag }}\` |"
+            echo "| 上游 qBittorrent / libtorrent | ${{ steps.check.outputs.upstream_qbt }} / ${{ steps.check.outputs.upstream_libtorrent }} |"
+            echo "| 上游发布时间 | ${{ steps.check.outputs.upstream_published_at }} |"
+            echo "| 是否有更新 | ${HAS_UPDATE:-未知（检查步骤未产出结果）} |"
+            echo ""
+
+            if [ "${HAS_UPDATE}" = "true" ]; then
+              echo "**结论：发现更新** -> \`${{ steps.check.outputs.new_version }}\`（${{ steps.check.outputs.reason }}）"
+            elif [ "${HAS_UPDATE}" = "false" ]; then
+              echo "**结论：上游无更新**（是否需要补发见下表）"
+            else
+              echo "**结论：版本检查未成功完成，请查看上方步骤日志**"
+            fi
+
+            if [ -n "${WARNING}" ]; then
+              echo ""
+              echo "> ⚠️ ${WARNING}"
+            fi
+
+            echo ""
+            echo "| 发布 | 值 |"
+            echo "| --- | --- |"
+            echo "| 目标版本 | \`${{ steps.release.outputs.version }}\` |"
+            echo "| 远端缺少 tag | ${{ steps.release.outputs.tag_missing }} |"
+            echo "| 远端缺少 Release | ${{ steps.release.outputs.release_missing }} |"
+            echo "| 是否执行发布 | ${{ steps.release.outputs.should_publish }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ------------------------------------------------------------------
+      # 6. 提交 manifest（仅「有更新」且非 dry_run）
+      # ------------------------------------------------------------------
+      - name: Commit manifest change
+        if: steps.check.outputs.has_update == 'true' && steps.guard.outputs.dry_run == 'false'
+        run: |
+          set -euo pipefail
+
+          git add manifest
+          git commit -m "chore: 同步上游版本 qbittorrent ${{ steps.check.outputs.upstream_qbt }} / libtorrent ${{ steps.check.outputs.upstream_libtorrent }}"
+
+          # 月度任务期间 main 可能已被其它提交推进，先 rebase 再推，避免非快进拒绝
+          if ! git push origin "HEAD:${{ env.SYNC_BRANCH }}"; then
+            echo "::warning::直接推送失败，尝试 rebase 后重推"
+            git fetch origin "${{ env.SYNC_BRANCH }}"
+            git rebase "origin/${{ env.SYNC_BRANCH }}"
+            git push origin "HEAD:${{ env.SYNC_BRANCH }}"
+          fi
+
+          echo "已提交并推送 manifest：version = ${{ steps.check.outputs.new_version }}"
+
+      # ------------------------------------------------------------------
+      # 7. 打 tag 并触发既有构建发布流水线
+      #    注意：用 GITHUB_TOKEN 推送 tag 不会自动触发 push 型 workflow，
+      #    因此这里显式用 workflow_dispatch 触发（该事件不受递归限制）。
+      # ------------------------------------------------------------------
+      - name: Create and push release tag
+        if: steps.release.outputs.should_publish == 'true' && steps.guard.outputs.dry_run == 'false'
+        run: |
+          set -euo pipefail
+
+          TAG="v${{ steps.release.outputs.version }}"
+          HAS_UPDATE="${{ steps.check.outputs.has_update }}"
+
+          if [ "${{ steps.release.outputs.tag_missing }}" = "false" ]; then
+            # 已存在同名 tag。
+            # 仅在「本次有新更新」时需要确认它指向本次刚推送的提交，
+            # 否则构建会读取旧 tag 里的 manifest，产物版本与 changelog 不一致。
+            # 补发路径（has_update=false）下 tag 指向历史提交属正常，不做校验。
+            if [ "${HAS_UPDATE}" = "true" ]; then
+              REMOTE_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+              HEAD_SHA="$(git rev-parse HEAD)"
+              if [ "${REMOTE_SHA}" != "${HEAD_SHA}" ]; then
+                echo "ERROR: 标签 ${TAG} 已存在但指向 ${REMOTE_SHA}，与当前提交 ${HEAD_SHA} 不一致"
+                echo "       构建会使用旧 tag 中的 manifest。请递增版本号，或删除该标签后重跑"
+                exit 1
+              fi
+            fi
+            echo "标签 ${TAG} 已存在，跳过创建"
+          else
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            echo "已创建并推送标签 ${TAG}"
+          fi
+
+      - name: Trigger Build and Release workflow
+        if: steps.release.outputs.should_publish == 'true' && steps.guard.outputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="v${{ steps.release.outputs.version }}"
+
+          # 仅当解析出的上游 qBittorrent 版本与目标版本一致时才透传上游 tag，
+          # 确保构建下载的二进制与 manifest/changelog 记录严格一致。
+          # 若 manifest 领先上游（例如上游把对应 release 撤回），则留空，
+          # 由构建侧按版本前缀自行匹配。
+          TARGET_QBT="$(echo "${{ steps.release.outputs.version }}" | cut -d. -f1-3)"
+          UPSTREAM_QBT="${{ steps.check.outputs.upstream_qbt }}"
+          UPSTREAM_TAG="${{ steps.check.outputs.upstream_tag }}"
+
+          QBT_TAG=""
+          if [ -n "${UPSTREAM_TAG}" ] && [ "${UPSTREAM_QBT}" = "${TARGET_QBT}" ]; then
+            QBT_TAG="${UPSTREAM_TAG}"
+          else
+            echo "::warning::上游 tag（${UPSTREAM_TAG:-未知} / qBittorrent ${UPSTREAM_QBT:-未知}）与目标版本 ${TARGET_QBT} 不一致，交由构建侧自行匹配"
+          fi
+
+          if [ -n "${QBT_TAG}" ]; then
+            # 补发时 --ref 指向的是历史 tag，其 workflow 文件可能尚未声明该输入，
+            # 此时 GitHub 会以 422 拒绝；回退为不带输入触发（构建侧自行匹配）。
+            # 这里只兜住「dispatch 请求被拒绝」，不会造成重复构建。
+            if ! gh workflow run build-and-release.yml \
+                   --ref "${TAG}" \
+                   -f "qbt_release_tag=${QBT_TAG}"; then
+              echo "::warning::带 qbt_release_tag 触发被拒绝（该 tag 的 workflow 可能未声明此输入），回退为自动匹配"
+              gh workflow run build-and-release.yml --ref "${TAG}"
+            fi
+          else
+            gh workflow run build-and-release.yml --ref "${TAG}"
+          fi
+
+          echo "已触发 Build and Release（ref=${TAG}, qbt_release_tag=${QBT_TAG:-自动匹配}）"
+          echo "构建完成后会自动创建 GitHub Release：${TAG}"

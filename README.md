@@ -2,7 +2,7 @@
 
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.3.2-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.4.0-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.35.0-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![MCP](https://img.shields.io/badge/MCP-%E2%9C%93%20AI%E6%8E%A5%E5%85%A5-8A2BE2?style=flat-square)
@@ -69,13 +69,13 @@ VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置�
 
 1. 打开 **应用中心** → 左下角 **手动安装**
 2. 选择对应架构的fpk文件：
-   - x86设备：`qbittorrent-5.2.3.2-amd64.fpk`
-   - ARM设备：`qbittorrent-5.2.3.2-arm64.fpk`
+   - x86设备：`qbittorrent-5.2.4.0-amd64.fpk`
+   - ARM设备：`qbittorrent-5.2.4.0-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-5.2.3.2-arm64.fpk
+appcenter-cli install-local qbittorrent-5.2.4.0-arm64.fpk
 ```
 
 ---
@@ -89,8 +89,8 @@ appcenter-cli install-local qbittorrent-5.2.3.2-arm64.fpk
 python build.py
 
 # 指定版本与架构
-python build.py --version 5.2.3.2 --arch amd64
-python build.py --version 5.2.3.2 --arch arm64
+python build.py --version 5.2.4.0 --arch amd64
+python build.py --version 5.2.4.0 --arch arm64
 
 # 强制重新下载所有依赖
 python build.py --force
@@ -271,6 +271,31 @@ qBittorrent WebUI API 有 100+ 端点，除上述专属工具外，`qb_api_reque
 
 
 
+---
+
+## 🔄 自动同步上游版本
+
+仓库配置了 GitHub Actions 工作流 **Monthly Upstream Sync**（`.github/workflows/monthly-upstream-sync.yml`）：
+
+- **每月最后一天**（UTC 00:00 / 北京时间 08:00）自动检查上游 [`userdocs/qbittorrent-nox-static`](https://github.com/userdocs/qbittorrent-nox-static) 的最新版本
+- **有更新** → 自动改写 `manifest`（`version` + `changelog`）→ 提交推送 → 打标签 → 触发构建并发布 Release
+- **无更新** → 不产生任何提交；但会检查当前版本是否已完整发布，若缺少远端标签或 GitHub Release 则自动补发（自愈上次的部分失败）
+
+> GitHub Actions 的 cron 无法直接表达「每月最后一天」，因此工作流用 `cron: '0 0 28-31 * *'` 触发，再在运行时判断「明天是否为 1 号」来收敛到真正的月末。
+
+也可在 Actions 页面手动触发该工作流，`force` 可强制产生一次更新（测试用，仅手动触发有效），`dry_run` 只改 `manifest` 而不提交。
+
+版本判定规则：
+
+| 上游情况 | 处理 |
+| --- | --- |
+| 上游 qBittorrent 版本更高 | `version = <上游版本>.0`，changelog 记为「同步上游版本」 |
+| qBittorrent 相同但上游 libtorrent 更高 | 重新打包，修订号 +1（如 `5.2.4.0` → `5.2.4.1`），changelog 记为「重新打包」 |
+| qBittorrent 相同但上游 libtorrent 更低或相同 | 无更新，跳过（降级不触发新版本） |
+| 其余 | 无更新，跳过 |
+
+---
+
 ## 📁 项目结构
 
 ```
@@ -304,6 +329,8 @@ fnos-qbittorrent/
 │   ├── config                     # 配置向导（含密码修改）
 │   ├── uninstall                  # 卸载向导
 │   └── upgrade                    # 升级向导
+├── scripts/
+│   └── check_upstream.py          # 上游版本检查（每月自动同步使用）
 ├── build.py                       # 跨平台构建脚本（Windows/Linux/macOS）
 ├── manifest                       # 应用清单
 └── README.md
