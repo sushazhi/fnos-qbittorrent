@@ -304,7 +304,9 @@ jobs:
 
       - name: Publish Release with Changelog
         run: |
-          CHANGELOG=$(grep "^changelog" manifest | sed 's/changelog\s*=\s*//' | sed 's/<br>/\n/g')
+          # 只取第一条 changelog：manifest 若残留历史累加的多条 changelog 行，
+          # 全量 grep 会把所有版本拼进发布说明。更新日志只保留最新版本。
+          CHANGELOG=$(grep -m1 "^changelog" manifest | sed 's/changelog\s*=\s*//' | sed 's/<br>/\n/g')
 
           TAG="${{ github.ref_name }}"
 

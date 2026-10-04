@@ -175,11 +175,15 @@ def read_manifest_version(text):
 
 
 def read_manifest_libtorrent(text):
-    """从 changelog 行解析当前记录的 libtorrent 版本，解析不到返回空串。"""
-    match = CHANGELOG_LINE_RE.search(text)
-    if not match:
+    """从 changelog 行解析当前记录的 libtorrent 版本，解析不到返回空串。
+
+    历史 manifest 里可能残留多条 changelog 行（手工累加/重复键所致），
+    这里以最后一条为准，与 render_manifest「只保留最新一条」的语义保持一致。
+    """
+    matches = list(CHANGELOG_LINE_RE.finditer(text))
+    if not matches:
         return ""
-    inner = LIBTORRENT_RE.search(match.group(0))
+    inner = LIBTORRENT_RE.search(matches[-1].group(0))
     return inner.group(1) if inner else ""
 
 
@@ -189,6 +193,11 @@ def render_manifest(text, version, qbt, libtorrent, reason=""):
     changelog 的措辞随更新原因变化，避免「重新打包」被描述成「同步上游版本」：
       - qBittorrent 版本升级 -> 同步上游版本
       - libtorrent 变更/强制重打包 -> 重新打包
+
+    changelog 只保留本次这一条：若 manifest 中残留了历史累加的多条 changelog 行
+    （手工维护或重复键所致），除第一条位置外的其余条目一律删除。
+    否则 build-and-release.yml 的 `grep "^changelog"` 会把多条拼进 Release 说明，
+    造成「更新日志一直累加」。
     """
     if reason.startswith("上游 qBittorrent 升级"):
         detail = "1. 同步上游版本qbittorrent %s libtorrent %s" % (qbt, libtorrent)
@@ -197,8 +206,12 @@ def render_manifest(text, version, qbt, libtorrent, reason=""):
     changelog = "v%s<br>%s" % (version, detail)
 
     text = VERSION_LINE_RE.sub(lambda _m: "version = %s" % version, text, 1)
-    if CHANGELOG_LINE_RE.search(text):
-        text = CHANGELOG_LINE_RE.sub(lambda _m: "changelog = " + changelog, text, 1)
+    matches = list(CHANGELOG_LINE_RE.finditer(text))
+    if matches:
+        # 只保留第一条 changelog 的位置：第一条之前的文本原样保留，
+        # 首条到末条之间的历史条目（含其行尾换行与空行分隔）整体删除，
+        # 末条之后的内容原样保留，因此不会残留空行，也不改变文件收尾换行。
+        text = text[:matches[0].start()] + "changelog = " + changelog + text[matches[-1].end():]
     else:
         text = text.rstrip("\n") + "\n\n"
         if "# 更新日志" not in text:

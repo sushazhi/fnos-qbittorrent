@@ -22,6 +22,7 @@
 
 - ✅ 每月最后一天检查上游 `userdocs/qbittorrent-nox-static` 最新版本
 - ✅ 有更新：改写 `manifest` 的 `version` 与 `changelog` → 提交推送 → 打 tag → 触发构建发布
+  - `changelog` 为**整行覆盖**，只保留最新版本这一条，不会累加历史版本的更新内容
 - ✅ 无更新：不产生任何提交；但仍会检查「manifest 当前版本是否已完整发布」
 - ✅ 自愈：若发现 manifest 版本**缺少远端 tag**或**缺少 GitHub Release**（上次运行部分失败），会补打 tag 并重新触发一次构建发布，避免永久漏发
 

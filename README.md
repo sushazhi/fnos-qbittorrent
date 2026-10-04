@@ -281,6 +281,8 @@ qBittorrent WebUI API 有 100+ 端点，除上述专属工具外，`qb_api_reque
 - **有更新** → 自动改写 `manifest`（`version` + `changelog`）→ 提交推送 → 打标签 → 触发构建并发布 Release
 - **无更新** → 不产生任何提交；但会检查当前版本是否已完整发布，若缺少远端标签或 GitHub Release 则自动补发（自愈上次的部分失败）
 
+> `manifest` 的 `changelog` **只保留最新版本这一条**：每次同步都会整行覆盖，不会把历史版本的更新内容一直累加。GitHub Release 说明与 App 内「发现新版本」提示都取自这一条。
+
 > GitHub Actions 的 cron 无法直接表达「每月最后一天」，因此工作流用 `cron: '0 0 28-31 * *'` 触发，再在运行时判断「明天是否为 1 号」来收敛到真正的月末。
 
 也可在 Actions 页面手动触发该工作流，`force` 可强制产生一次更新（测试用，仅手动触发有效），`dry_run` 只改 `manifest` 而不提交。
