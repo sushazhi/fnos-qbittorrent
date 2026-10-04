@@ -101,7 +101,7 @@ PREFIX = "/app/qbittorrent"
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
 UPDATE_PROXY_MAIN = "https://gh.dpik.top/"
-UPDATE_PROXY_BACKUP = "https://gh-proxy.org/"
+UPDATE_PROXY_BACKUP = "https://v4.gh-proxy.org/"
 STATIC_EXTENSIONS = frozenset({
     'js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
     'woff', 'woff2', 'ttf', 'eot',

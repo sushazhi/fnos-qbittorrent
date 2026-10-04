@@ -36,7 +36,7 @@ FNPACK_VER = "1.2.3"  # 用于版本缓存判断，需与 FNPACK_BASE 中的版�
 
 # 下载源（按顺序尝试）
 MAIN_PROXY = "https://gh.dpik.top/"
-BINARY_PROXY = "https://gh-proxy.org/"
+BINARY_PROXY = "https://v4.gh-proxy.org/"
 
 QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 VUE_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"

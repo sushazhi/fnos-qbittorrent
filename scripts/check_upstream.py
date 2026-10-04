@@ -46,7 +46,7 @@ import urllib.request
 UPSTREAM_REPO = "userdocs/qbittorrent-nox-static"
 API_BASE = "https://api.github.com"
 # 直连不可用时的镜像（仅代理 GitHub API 的只读请求，不携带令牌）
-API_PROXIES = ("https://gh.dpik.top/", "https://gh-proxy.org/")
+API_PROXIES = ("https://gh.dpik.top/", "https://v4.gh-proxy.org/")
 RELEASES_PATH = "/repos/%s/releases?per_page=100" % UPSTREAM_REPO
 
 TAG_RE = re.compile(r"^release-(\d+(?:\.\d+)*)_v(\d+(?:\.\d+)*)$")
