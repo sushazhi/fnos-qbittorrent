@@ -35,8 +35,8 @@ FNPACK_BASE = "https://static2.fnnas.com/fnpack/fnpack-1.2.3"
 FNPACK_VER = "1.2.3"  # 用于版本缓存判断，需与 FNPACK_BASE 中的版本一致
 
 # 下载源（按顺序尝试）
-MAIN_PROXY = "https://gh-proxy.com/"
-BINARY_PROXY = "https://ghfast.top/"
+MAIN_PROXY = "https://gh.dpik.top/"
+BINARY_PROXY = "https://gh-proxy.org/"
 
 QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 VUE_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
@@ -123,7 +123,7 @@ def download(url, out_file, description, component, version, force, use_proxy=Tr
 
     url_list = []
     if use_proxy:
-        url_list = [MAIN_PROXY + url, BINARY_PROXY + url, url]
+        url_list = [url, MAIN_PROXY + url, BINARY_PROXY + url]
     else:
         url_list = [url]
 

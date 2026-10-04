@@ -100,7 +100,7 @@ logging.basicConfig(
 PREFIX = "/app/qbittorrent"
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
-UPDATE_PROXY_MAIN = "https://gh-proxy.com/"
+UPDATE_PROXY_MAIN = "https://gh.dpik.top/"
 UPDATE_PROXY_BACKUP = "https://gh-proxy.org/"
 STATIC_EXTENSIONS = frozenset({
     'js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
@@ -1654,13 +1654,13 @@ def _perform_update(info):
         _update_status["message"] = "正在准备更新..."
         _update_status["progress"] = 5
         fpk_path = "/tmp/qbittorrent-update.fpk"
-        urls = [UPDATE_PROXY_MAIN + fpk_url, UPDATE_PROXY_BACKUP + fpk_url, fpk_url]
+        urls = [fpk_url, UPDATE_PROXY_MAIN + fpk_url, UPDATE_PROXY_BACKUP + fpk_url]
         success = False
         last_error = ""
         messages = [
             "正在下载更新包...",
-            "主代理下载失败，切换备用代理...",
-            "备用代理下载失败，尝试直连..."
+            "直连下载失败，切换主代理...",
+            "主代理下载失败，切换备用代理..."
         ]
         for idx, download_url in enumerate(urls):
             _update_status["message"] = messages[idx]
