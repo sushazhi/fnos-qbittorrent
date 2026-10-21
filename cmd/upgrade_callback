@@ -66,9 +66,26 @@ if [ "$BACKUP_EXISTS" = true ]; then
     # 有备份：直接恢复数据（覆盖新安装的默认配置）
     echo "正在从备份恢复数据..."
     mkdir -p "$DATA_DIR"
-    rm -rf "$DATA_DIR"/* 2>/dev/null || true
-    cp -a "$BACKUP_DIR"/* "$DATA_DIR/" 2>/dev/null || true
-    echo "数据已从共享备份成功恢复"
+    # 清空现有内容（含隐藏项），避免新安装的默认配置混入用户数据
+    find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name '.locks' -exec rm -rf {} + 2>/dev/null || true
+    if cp -a "$BACKUP_DIR"/. "$DATA_DIR"/ 2>/dev/null; then
+        echo "数据已从共享备份成功恢复"
+    else
+        # cp 返回非 0 不代表完全失败，逐项确认关键文件
+        if [ -f "${DATA_DIR}/qBittorrent/config/qBittorrent.conf" ]; then
+            echo "数据已从共享备份恢复（部分文件拷贝告警）"
+        else
+            echo "错误：数据恢复失败，配置文件未到位" > "$TRIM_TEMP_LOGFILE"
+            echo "错误：数据恢复失败"
+            exit 1
+        fi
+    fi
+
+    # 还原权限：备份时为了可读临时改为 700/600，恢复后回到正常值，
+    # qBittorrent 首次启动会自行把 config 目录收紧到 000。
+    chmod 755 "$DATA_DIR" 2>/dev/null || true
+    find "$DATA_DIR/qBittorrent" -type d -exec chmod 750 {} \; 2>/dev/null || true
+    find "$DATA_DIR/qBittorrent" -type f -exec chmod 640 {} \; 2>/dev/null || true
 
     # 删除备份
     rm -rf "$BACKUP_DIR"

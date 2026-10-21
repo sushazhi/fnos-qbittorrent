@@ -130,3 +130,7 @@ release_notes.md
 artifacts/
 build-output/
 
+
+# 测试脚本凭据（通过环境变量 QBT_NAS_HOST/USER/PASS 提供，绝不提交）
+.env
+*.secret

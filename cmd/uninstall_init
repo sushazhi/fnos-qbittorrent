@@ -9,12 +9,24 @@ DATA_ACTION="${wizard_data_action:-keep}"
 echo "用户数据处理方式: $DATA_ACTION"
 
 # 根据用户选择处理数据目录（var 目录系统会保留，需要手动清理）
-DATA_DIR="${TRIM_PKGVAR}"
-if [ -d "$DATA_DIR" ]; then
-    if [ "$DATA_ACTION" = "delete" ]; then
-        echo "删除数据目录: $DATA_DIR"
-        rm -rf "$DATA_DIR" 2>/dev/null || echo "警告：无法删除数据目录"
+DATA_DIR="${TRIM_PKGVAR:-}"
+if [ "$DATA_ACTION" = "delete" ]; then
+    # 三重守卫：非空、不是根目录、确实存在且是目录。
+    # 缺少守卫时，一旦 TRIM_PKGVAR 异常为空或被设为 "/"，rm -rf 会造成灾难性后果。
+    if [ -z "$DATA_DIR" ]; then
+        echo "错误：数据目录变量为空，拒绝删除" >&2
+        echo "错误：数据目录变量为空，拒绝删除操作"
+    elif [ "$DATA_DIR" = "/" ] || [ "$DATA_DIR" = "/*" ]; then
+        echo "错误：数据目录不合法（$DATA_DIR），拒绝删除" >&2
+        echo "错误：数据目录不合法，拒绝删除操作"
+    elif [ ! -d "$DATA_DIR" ]; then
+        echo "数据目录不存在，无需删除: $DATA_DIR"
     else
+        echo "删除数据目录: $DATA_DIR"
+        rm -rf "${DATA_DIR:?}" 2>/dev/null || echo "警告：无法删除数据目录"
+    fi
+else
+    if [ -n "$DATA_DIR" ] && [ -d "$DATA_DIR" ]; then
         echo "保留数据目录: $DATA_DIR"
     fi
 fi

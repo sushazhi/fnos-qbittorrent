@@ -111,60 +111,98 @@ esac
 if [ -f "$CONFIG_FILE" ]; then
     echo "Configuration file exists, updating settings while preserving other settings..."
 
+    # 读取用户当前端口：只在配置里没有端口时才用默认 8080。
+    # 历史上这里无条件写死 8080，导致用户自定义端口在覆盖安装时被静默重置。
+    CUR_PORT=$(grep -E "^WebUI\\\\Port=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
+    case "$CUR_PORT" in
+        ''|*[!0-9]*) CUR_PORT=8080 ;;
+    esac
+    [ "$CUR_PORT" -gt 0 ] 2>/dev/null || CUR_PORT=8080
+    echo "Preserving WebUI port: $CUR_PORT"
+
     TMP_CONFIG=$(mktemp)
-    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" -v new_pass="${PASSWORD_HASH}" -v root="${TRIM_APPDEST}/ui/vuetorrent" '
-        BEGIN { alt_ui_updated = 0; save_updated = 0; bittorrent_section = 0; port_updated = 0; addr_updated = 0; lha_updated = 0; pass_updated = 0; root_written = 0; }
+    awk -v alt_ui="${ALT_UI_ENABLED}" -v save_path="${SAVE_PATH}" -v new_pass="${PASSWORD_HASH}" \
+        -v root="${TRIM_APPDEST}/ui/vuetorrent" -v cur_port="${CUR_PORT}" '
+        function starts_with(s, p) { return index(s, p) == 1 }
         {
             if ($0 == "[BitTorrent]") {
                 print $0
                 print "Session\\DefaultSavePath=" save_path
-                bittorrent_section = 1
-                save_updated = 1
-            }
-            else if ($0 == "[Preferences]") {
-                print $0
-                if (!port_updated) { print "WebUI\\Port=8080"; port_updated = 1; }
-                if (!addr_updated) { print "WebUI\\Address=0.0.0.0"; addr_updated = 1; }
-                if (!lha_updated) { print "WebUI\\LocalHostAuth=false"; lha_updated = 1; }
-                if (new_pass != "" && !pass_updated) {
-                    print "WebUI\\Password_PBKDF2=" new_pass;
-                    pass_updated = 1;
-                }
-                print "WebUI\\AlternativeUIEnabled=" alt_ui
-                alt_ui_updated = 1
-                if (alt_ui == "true" && !root_written) {
-                    print "WebUI\\RootFolder=" root
-                    root_written = 1
-                }
-            }
-            else if (new_pass != "" && $0 ~ /^WebUI\\Password_PBKDF2=/) {
-                if (!pass_updated) {
-                    print "WebUI\\Password_PBKDF2=" new_pass;
-                    pass_updated = 1;
-                }
+                in_bt = 1
+                save_written = 1
                 next
             }
-            else if (!/^WebUI\\Port=/ && !/^WebUI\\Address=/ && !/^WebUI\\AlternativeUIEnabled=/ && !/^WebUI\\LocalHostAuth=/ && !/^WebUI\\Password_PBKDF2=/ && !/^WebUI\\RootFolder=/ && !/^Downloads\\SavePath=/ && !/^Session\\DefaultSavePath=/) {
+            # [BitTorrent] 段内旧的 DefaultSavePath 已被新值取代，跳过旧行避免重复
+            if (in_bt && starts_with($0, "Session\\DefaultSavePath=")) { next }
+            if ($0 == "[Preferences]") {
                 print $0
+                in_pref = 1
+                pref_seen = 1
+                next
             }
+            # 任何新 section 开始时，先补齐 [BitTorrent] 缺失的保存路径
+            if ($0 ~ /^\[/ && in_bt && !save_written) {
+                print "Session\\DefaultSavePath=" save_path
+                save_written = 1
+            }
+            if ($0 ~ /^\[/) { in_bt = 0; in_pref = 0 }
+
+            # ---- [Preferences] 内的键：逐项处理，保留用户值 ----
+            if (starts_with($0, "WebUI\\Port=")) {
+                # 保留用户端口；从未设置过则补默认值
+                print "WebUI\\Port=" cur_port
+                port_done = 1
+                next
+            }
+            if (starts_with($0, "WebUI\\Address=")) { print $0; addr_done = 1; next }
+            if (starts_with($0, "WebUI\\LocalHostAuth=")) { print $0; lha_done = 1; next }
+            if (starts_with($0, "WebUI\\AlternativeUIEnabled=")) {
+                print "WebUI\\AlternativeUIEnabled=" alt_ui
+                alt_done = 1
+                next
+            }
+            if (starts_with($0, "WebUI\\RootFolder=")) {
+                # 仅在启用 VueTorrent 时接管 RootFolder，否则保留用户值
+                if (alt_ui == "true") print "WebUI\\RootFolder=" root
+                else print $0
+                root_done = 1
+                next
+            }
+            if (starts_with($0, "WebUI\\Password_PBKDF2=")) {
+                if (new_pass != "") print "WebUI\\Password_PBKDF2=" new_pass
+                else print $0
+                pass_done = 1
+                next
+            }
+            # 其余所有键（含 Downloads\\SavePath、限速、高级设置）原样保留
+            print $0
         }
         END {
-            if (!port_updated && !alt_ui_updated && !save_updated) {
+            # 只在确实缺少键时补一个 [Preferences] 段；
+            # 若原文件已有该段，把缺失键追加到文件末尾比重复开段更安全
+            if (!port_done || !addr_done || !lha_done || !alt_done) {
+                if (!pref_seen) print "[Preferences]"
+                if (!port_done) print "WebUI\\Port=" cur_port
+                if (!addr_done) print "WebUI\\Address=0.0.0.0"
+                if (!lha_done) print "WebUI\\LocalHostAuth=false"
+                if (!alt_done) print "WebUI\\AlternativeUIEnabled=" alt_ui
+                if (alt_ui == "true" && !root_done && !pref_seen) print "WebUI\\RootFolder=" root
+            }
+            if (!save_written) {
                 print "[BitTorrent]"
                 print "Session\\DefaultSavePath=" save_path
-                print "[Preferences]"
-                print "WebUI\\Port=8080"
-                print "WebUI\\Address=0.0.0.0"
-                print "WebUI\\LocalHostAuth=false"
-                if (new_pass != "") print "WebUI\\Password_PBKDF2=" new_pass
-                print "WebUI\\AlternativeUIEnabled=" alt_ui
-                if (alt_ui == "true") print "WebUI\\RootFolder=" root
             }
         }
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
 
-    mv "$TMP_CONFIG" "$CONFIG_FILE"
-    echo "Configuration updated (savepath, UI, gateway mode)"
+    if [ -s "$TMP_CONFIG" ]; then
+        mv "$TMP_CONFIG" "$CONFIG_FILE"
+        echo "Configuration updated (savepath, UI, gateway mode), user settings preserved"
+    else
+        rm -f "$TMP_CONFIG"
+        echo "警告：配置合并结果为空，保留原配置未改动" > "$TRIM_TEMP_LOGFILE"
+        echo "警告：配置合并失败，已跳过（原配置保持不变）"
+    fi
 else
     echo "Creating new configuration file..."
 

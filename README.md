@@ -3,7 +3,7 @@
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
 ![qBittorrent](https://img.shields.io/badge/qBittorrent-5.3.0.0-blue?style=flat-square&logo=qbittorrent)
-![VueTorrent](https://img.shields.io/badge/VueTorrent-2.35.0-purple?style=flat-square&logo=vue.js)
+![VueTorrent](https://img.shields.io/badge/VueTorrent-2.36.1-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![MCP](https://img.shields.io/badge/MCP-%E2%9C%93%20AI%E6%8E%A5%E5%85%A5-8A2BE2?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL--2.0-blue?style=flat-square)

@@ -132,21 +132,83 @@ else
             exit 1
         fi
 
-        # 复制所有数据到备份目录（排除锁目录，它不是用户数据）
-        if ! tar -C "$DATA_DIR" --exclude='./.locks' -cf - . 2>/dev/null \
-                | tar -C "$BACKUP_DIR" -xf - 2>/dev/null; then
-            echo "错误：备份数据失败" > "$TRIM_TEMP_LOGFILE"
-            exit 1
+        # 复制所有数据到备份目录。
+        #
+        # 关键：qBittorrent 会把配置目录权限设为 000 (d---------)，防止外部篡改。
+        # 此时 cp -a 连目录都进不去，备份目录会是空的 —— 这正是
+        # "备份验证失败，数据可能存在风险" 的真实成因。
+        # 因此先临时放开读/执行权限，备份完成后立刻还原原权限。
+        #
+        # 用数字权限记录原始 mode，还原时精确恢复，不改变用户安全设置。
+        #
+        # 顺序很关键：必须在任何 chmod 之前记录原始权限，否则记到的是被改过的值。
+        # find 默认无法进入 000 权限目录，但去掉 -prune 后仍需可遍历；
+        # 因此采用「先记录已知层级 + 放开后再补记录」的两段式：
+        #   1) 逐个 depth 递增地记录（父目录先放开，才能 stat 到子项）
+        # 这里用更简单的等价做法：先用 -maxdepth 1 记录顶层，再放开，再全量记录。
+        _perm_list=$(mktemp 2>/dev/null || echo "/tmp/qbt_perm.$$")
+
+        # 记录原始权限：对每层目录先 stat 再进入。
+        # 用一个递归 shell 函数实现，遇到无权限目录时先记录其现有 mode（即 000）再放开进入。
+        _qbt_dump_perms() {
+            local d="$1"
+            [ -d "$d" ] || return 0
+            local m
+            m=$(stat -c '%a' "$d" 2>/dev/null) || return 0
+            printf '%s %s\n' "$m" "$d" >> "$_perm_list"
+            # 放开当前层，才能继续往里走
+            chmod u+rX "$d" 2>/dev/null || true
+            local sub
+            for sub in "$d"/*/; do
+                [ -d "$sub" ] || continue
+                _qbt_dump_perms "${sub%/}"
+            done
+        }
+        _qbt_dump_perms "$DATA_DIR" 2>/dev/null || true
+
+        # 文件若不可读也一并放开（cp 需要读内容）
+        find "$DATA_DIR" -type f -exec chmod u+r {} \; 2>/dev/null || true
+
+        BACKUP_OK=false
+        if cp -a "$DATA_DIR"/. "$BACKUP_DIR"/ 2>/dev/null; then
+            BACKUP_OK=true
+        else
+            echo "警告：cp -a 返回非 0，检查关键数据是否已备份"
         fi
 
-        # 验证备份
-        if [ -f "${BACKUP_DIR}/qBittorrent/config/qBittorrent.conf" ] || \
-           [ -d "${BACKUP_DIR}/qBittorrent" ] || \
-           [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+        # 还原原始目录权限（逐条精确还原到升级前的 mode）
+        if [ -s "$_perm_list" ]; then
+            while IFS=' ' read -r _mode _path; do
+                [ -n "$_mode" ] && [ -e "$_path" ] && \
+                    chmod "$_mode" "$_path" 2>/dev/null || true
+            done < "$_perm_list"
+        fi
+        rm -f "$_perm_list" 2>/dev/null || true
+
+        # 清理备份里的运行时锁目录（不是用户数据）
+        rm -rf "${BACKUP_DIR}/.locks" 2>/dev/null || true
+        # 备份里的目录权限恢复为可读写，避免还原时同样遇到 000 权限
+        find "$BACKUP_DIR" -type d -exec chmod 700 {} \; 2>/dev/null || true
+        find "$BACKUP_DIR" -type f -exec chmod 600 {} \; 2>/dev/null || true
+
+        # 验证备份：只要有任一实际用户数据到位即视为成功
+        VERIFIED=false
+        if [ -f "${BACKUP_DIR}/qBittorrent/config/qBittorrent.conf" ]; then
+            VERIFIED=true
+        elif [ -d "${BACKUP_DIR}/qBittorrent" ] && [ -n "$(ls -A "${BACKUP_DIR}/qBittorrent" 2>/dev/null)" ]; then
+            VERIFIED=true
+        elif [ -n "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
+            VERIFIED=true
+        fi
+
+        if [ "$VERIFIED" = true ]; then
             echo "Data backed up successfully to: $BACKUP_DIR"
             # 备份信息写入持久化位置
             echo "BACKUP_DIR=$BACKUP_DIR" > "$BACKUP_INFO_FILE"
             echo "Backup location recorded: $BACKUP_INFO_FILE"
+        elif [ "$BACKUP_OK" = true ]; then
+            # cp 成功但备份目录仍为空：源数据实际只有 .locks，无可备份内容
+            echo "无实际用户数据需要备份（仅有运行时目录）"
         else
             echo "错误：备份验证失败，数据可能存在风险" > "$TRIM_TEMP_LOGFILE"
             exit 1
