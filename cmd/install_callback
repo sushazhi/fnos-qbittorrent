@@ -9,6 +9,35 @@ CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 
 echo "Running ${APP_NAME} install_callback..."
 
+# 清理历史版本（<=5.3.0.0）遗留的生命周期锁文件。
+# 旧版本把升级锁放在 TRIM_PKGTMP，一旦升级中断，锁文件会残留，
+# 导致此后每次升级都报"另一个升级进程正在运行"且无法自愈。
+# 安装/覆盖安装是唯一必经入口，在这里清一次可让已卡住的用户自动恢复。
+for _stale_lock in \
+    "${TRIM_PKGTMP:-/nonexistent}/${APP_NAME}.upgrade.lock" \
+    "${TRIM_PKGTMP:-/nonexistent}/${APP_NAME}.lock" \
+    "/tmp/${APP_NAME}.upgrade.lock" \
+    "/tmp/${APP_NAME}.lock" \
+    "/var/tmp/${APP_NAME}.upgrade.lock" \
+    "/var/tmp/${APP_NAME}.lock"
+do
+    if [ -f "$_stale_lock" ]; then
+        # 只在确认无人持有该锁时才删除，避免打断真正在跑的升级。
+        # 探测放在子 shell：能拿到锁(rc=0) 才算残留；flock 不可用(rc=2) 时保守跳过。
+        (
+            exec 212>>"$_stale_lock" 2>/dev/null || exit 2
+            flock -n 212 2>/dev/null || exit 1
+            exit 0
+        )
+        if [ $? -eq 0 ]; then
+            rm -f "$_stale_lock" 2>/dev/null && echo "已清理残留生命周期锁: $_stale_lock"
+        else
+            echo "跳过仍被占用或无法探测的锁: $_stale_lock"
+        fi
+    fi
+done
+unset _stale_lock
+
 # 设置可执行权限
 if ! chmod +x "$BIN_DIR/qbittorrent-nox" 2>/dev/null; then
     echo "Warning: Failed to set executable permission on qbittorrent-nox" > "$TRIM_TEMP_LOGFILE"

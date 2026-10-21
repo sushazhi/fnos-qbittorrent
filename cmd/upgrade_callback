@@ -3,13 +3,22 @@
 # 功能：升级后恢复数据、设置权限、验证配置、启动服务
 
 APP_NAME="qbittorrent"
+CMD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
 CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
-LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.upgrade.lock"
-MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
+MAIN_SCRIPT="${CMD_DIR}/main"
+
+# 公共锁工具：锁文件位置、僵尸锁清理、退出兜底
+# shellcheck source=upgrade_lock.sh
+. "${CMD_DIR}/upgrade_lock.sh" 2>/dev/null || {
+    echo "错误：缺少锁工具 ${CMD_DIR}/upgrade_lock.sh" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+}
+
+QBT_LOCK_OWNER_TAG="upgrade_callback"
 
 # 备份在shares目录（多卷系统优先使用系统共享路径）
 SHARE_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
@@ -23,11 +32,12 @@ echo "qBittorrent 升级完成"
 echo "=================================="
 echo ""
 
-# 等待升级锁释放（upgrade_init 会释放）
-exec 200>"$LOCK_FILE"
-flock -w 30 200 || {
-    echo "警告：等待升级锁超时，继续执行..."
-}
+# 获取升级锁（upgrade_init 正常结束时会已释放，这里只做短暂等待）
+# 关键：即使等待失败也继续执行——回调阶段不能因为锁而中断升级收尾，
+# 否则会留下"升级完成但服务未启动"的半成品状态。
+if ! qbt_lock "qbittorrent.upgrade.lock" 30; then
+    echo "警告：等待升级锁超时（持有者 PID: ${QBT_LOCK_BUSY_PID:-未知}），继续执行升级收尾..."
+fi
 
 # 设置可执行权限
 echo "[1/3] 设置可执行权限..."
@@ -177,7 +187,7 @@ if [ $EXIT_CODE -eq 0 ]; then
     echo ""
     echo "重要提示：如果您更改了 qBittorrent 版本，"
     echo "          某些设置可能需要重新配置。"
-    flock -u 200
+    qbt_unlock
     exit 0
 else
     echo ""
@@ -185,6 +195,6 @@ else
     echo "警告：升级完成但服务启动失败"
     echo "=================================="
     echo "请查看日志: ${TRIM_PKGVAR}/${APP_NAME}.log"
-    flock -u 200
+    qbt_unlock
     exit 1
 fi

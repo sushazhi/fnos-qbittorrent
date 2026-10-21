@@ -4,12 +4,21 @@
 set -u
 
 APP_NAME="qbittorrent"
+CMD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
-LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.lock"
-MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
+MAIN_SCRIPT="${CMD_DIR}/main"
 UI_CONFIG="${TRIM_APPDEST}/ui/config"
+
+# 公共锁工具：避免锁文件放在临时目录导致的残留死锁
+# shellcheck source=upgrade_lock.sh
+if . "${CMD_DIR}/upgrade_lock.sh" 2>/dev/null; then
+    QBT_LOCK_OWNER_TAG="config_callback"
+    HAVE_LOCK_LIB=1
+else
+    HAVE_LOCK_LIB=0
+fi
 
 echo "正在应用 qBittorrent 配置..."
 
@@ -66,11 +75,12 @@ fi
 if [ -f "$CONFIG_FILE" ]; then
     echo "更新qBittorrent配置文件..."
 
-    exec 200>"$LOCK_FILE"
-    flock -w 10 200 || {
-        echo "错误：无法获取配置文件锁" >&2
-        exit 1
-    }
+    if [ "$HAVE_LOCK_LIB" = "1" ]; then
+        if ! qbt_lock "qbittorrent.config.lock" 15; then
+            echo "错误：无法获取配置文件锁（持有者 PID: ${QBT_LOCK_BUSY_PID:-未知}）" >&2
+            exit 1
+        fi
+    fi
 
     TMP_CONFIG=$(mktemp)
     awk -v alt_ui="${ALT_UI_ENABLED}" -v addr="${WEBUI_ADDRESS}" -v lha="${LOCALHOST_AUTH}" -v wizard_user="${WIZARD_USERNAME}" -v wizard_pass="${WIZARD_PASS_HASH}" -v root="${TRIM_APPDEST}/ui/vuetorrent" '
@@ -141,7 +151,7 @@ if [ -f "$CONFIG_FILE" ]; then
     ' "$CONFIG_FILE" > "$TMP_CONFIG"
 
     mv "$TMP_CONFIG" "$CONFIG_FILE"
-    flock -u 200
+    [ "$HAVE_LOCK_LIB" = "1" ] && qbt_unlock
     echo "qBittorrent配置文件已更新"
 else
     echo "警告：配置文件不存在，将在首次启动时创建"

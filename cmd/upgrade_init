@@ -3,12 +3,21 @@
 # 功能：升级前停止服务并备份数据
 
 APP_NAME="qbittorrent"
+CMD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_DIR="${DATA_DIR}/qBittorrent/config"
 CONFIG_FILE="${CONFIG_DIR}/qBittorrent.conf"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
-LOCK_FILE="${TRIM_PKGTMP}/${APP_NAME}.upgrade.lock"
+
+# 公共锁工具（锁文件位置、僵尸锁清理、退出兜底都在这里）
+# shellcheck source=upgrade_lock.sh
+. "${CMD_DIR}/upgrade_lock.sh" 2>/dev/null || {
+    echo "错误：缺少锁工具 ${CMD_DIR}/upgrade_lock.sh" > "$TRIM_TEMP_LOGFILE"
+    exit 1
+}
+
+QBT_LOCK_OWNER_TAG="upgrade_init"
 
 # 备份到shares目录（fnOS卸载/升级时保留）
 # 共享路径可能不在 /vol1（多卷系统），优先使用系统提供的共享路径
@@ -30,9 +39,19 @@ echo "=================================="
 echo ""
 
 # 获取升级锁，防止并发升级
-exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
-    echo "错误：另一个升级进程正在运行，请稍后重试" > "$TRIM_TEMP_LOGFILE"
+#   - 锁放持久目录，不随临时目录被清理而失效
+#   - 先等待，再判断持有者是否存活；残留锁自动接管
+#   - trap 保证任何 exit 路径都放锁
+qbt_lock "qbittorrent.upgrade.lock" 20
+LOCK_RC=$?
+if [ "$LOCK_RC" -ne 0 ]; then
+    if [ -n "${QBT_LOCK_BUSY_PID:-}" ]; then
+        echo "错误：另一个升级进程正在运行（PID: ${QBT_LOCK_BUSY_PID}），请等待其完成后再试" > "$TRIM_TEMP_LOGFILE"
+        echo "检测到正在运行的升级进程 PID=${QBT_LOCK_BUSY_PID}，升级已中止"
+    else
+        echo "错误：升级锁被占用且无法自动清理，请重启 NAS 后重试" > "$TRIM_TEMP_LOGFILE"
+        echo "升级锁被占用（持有者已退出但锁未释放），无法自动接管"
+    fi
     exit 1
 fi
 
@@ -40,7 +59,7 @@ fi
 echo "[1/3] Stopping ${APP_NAME} service..."
 
 # 使用绝对路径调用main脚本停止服务
-MAIN_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main"
+MAIN_SCRIPT="${CMD_DIR}/main"
 STOPPED=false
 
 if [ -x "$MAIN_SCRIPT" ]; then
@@ -51,14 +70,14 @@ elif [ -f "$PID_FILE" ]; then
     if [ -n "$PID" ] && ps -p "$PID" > /dev/null 2>&1; then
         echo "Stopping process (PID: $PID)..."
         kill "$PID" 2>/dev/null || true
-        
+
         # 等待进程结束（最多10秒）
         TIMEOUT=10
         while ps -p "$PID" > /dev/null 2>&1 && [ $TIMEOUT -gt 0 ]; do
             sleep 0.5
             TIMEOUT=$((TIMEOUT - 1))
         done
-        
+
         # 强制终止如果还在运行
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "Force killing process..."
@@ -92,8 +111,9 @@ if [ "$DATA_ACTION" = "delete" ]; then
     # 用户选择删除所有数据
     echo "User chose to delete all data during upgrade"
     if [ -d "$DATA_DIR" ]; then
-        rm -rf "$DATA_DIR"
-        echo "Data directory removed: $DATA_DIR"
+        # 只清内容，保留目录骨架（目录本身由 fnOS 管理）
+        find "$DATA_DIR" -mindepth 1 -maxdepth 1 ! -name '.locks' -exec rm -rf {} + 2>/dev/null || true
+        echo "Data directory cleared: $DATA_DIR"
     fi
     # 清理可能存在的备份
     rm -rf "$BACKUP_DIR" 2>/dev/null || true
@@ -101,15 +121,20 @@ else
     # 用户选择保留数据 - 主动备份到持久化目录以防被fnOS清理
     echo "User chose to keep data, backing up to persistent location..."
 
-    if [ -d "$DATA_DIR" ] && [ -n "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
-        # 创建备份目录
+    if [ -d "$DATA_DIR" ] && [ -n "$(ls -A "$DATA_DIR" 2>/dev/null | grep -v '^\.locks$')" ]; then
+        # 创建备份目录：先清再建，避免连续升级时 cp -a 嵌套成 backup/config/...
+        if ! rm -rf "$BACKUP_DIR" 2>/dev/null; then
+            echo "错误：清理旧备份目录失败" > "$TRIM_TEMP_LOGFILE"
+            exit 1
+        fi
         if ! mkdir -p "$BACKUP_DIR" 2>/dev/null; then
             echo "错误：创建备份目录失败" > "$TRIM_TEMP_LOGFILE"
             exit 1
         fi
 
-        # 复制所有数据到备份目录
-        if ! cp -a "$DATA_DIR"/* "$BACKUP_DIR/" 2>/dev/null; then
+        # 复制所有数据到备份目录（排除锁目录，它不是用户数据）
+        if ! tar -C "$DATA_DIR" --exclude='./.locks' -cf - . 2>/dev/null \
+                | tar -C "$BACKUP_DIR" -xf - 2>/dev/null; then
             echo "错误：备份数据失败" > "$TRIM_TEMP_LOGFILE"
             exit 1
         fi
@@ -136,6 +161,6 @@ echo "=================================="
 echo "qBittorrent upgrade initialized"
 echo "=================================="
 
-# 释放升级锁
-flock -u 200
+# 释放升级锁（trap 也会兜底，这里显式释放以缩短锁持有窗口）
+qbt_unlock
 exit 0
