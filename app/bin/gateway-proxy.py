@@ -100,8 +100,23 @@ logging.basicConfig(
 PREFIX = "/app/qbittorrent"
 UPDATE_REPO = "sushazhi/fnos-qbittorrent"
 UPDATE_API = "https://api.github.com"
-UPDATE_PROXY_MAIN = "https://gh.dpik.top/"
-UPDATE_PROXY_BACKUP = "https://v4.gh-proxy.org/"
+# 更新包下载加速源（按顺序尝试，直连最后兜底）
+#
+# 选型依据（2026-10 实测，用 39.6MB fpk 逐站测速）：
+#   gh-proxy.com       多轮 0.95~6.4 MB/s，最稳
+#   v4.gh-proxy.org    与 gh-proxy.com 同一后端（x-github-request-id / etag /
+#                      x-cache-hits 完全一致），只能作节点切换，不是灾备
+#   ghfast.top         独立运营，抖动极大（1.8 MB/s ~ 100s 超时）
+#   ghproxy.imciel.com 独立运营，0.5~0.9 MB/s
+#   直连               github.com 可握手但返回 0 字节并超时
+#
+# 已淘汰：gh.dpik.top（实测 0.09 MB/s，且 API 侧 403）。
+UPDATE_MIRRORS = (
+    "https://gh-proxy.com/",
+    "https://v4.gh-proxy.org/",
+    "https://ghfast.top/",
+    "https://ghproxy.imciel.com/",
+)
 STATIC_EXTENSIONS = frozenset({
     'js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'ico',
     'woff', 'woff2', 'ttf', 'eot',
@@ -1654,16 +1669,20 @@ def _perform_update(info):
         _update_status["message"] = "正在准备更新..."
         _update_status["progress"] = 5
         fpk_path = "/tmp/qbittorrent-update.fpk"
-        urls = [fpk_url, UPDATE_PROXY_MAIN + fpk_url, UPDATE_PROXY_BACKUP + fpk_url]
+        # 代理优先、直连最后：实测直连 github.com 会 0 字节超时，
+        # 放最前只会让用户先白等一轮超时（旧实现为 3 个源 × 最长 120s）。
+        urls = [mirror + fpk_url for mirror in UPDATE_MIRRORS] + [fpk_url]
         success = False
         last_error = ""
-        messages = [
-            "正在下载更新包...",
-            "直连下载失败，切换主代理...",
-            "主代理下载失败，切换备用代理..."
-        ]
         for idx, download_url in enumerate(urls):
-            _update_status["message"] = messages[idx]
+            if idx == 0:
+                _update_status["message"] = "正在下载更新包..."
+            elif idx < len(UPDATE_MIRRORS):
+                _update_status["message"] = "加速源 %d 失败，切换下一个源...（%d/%d）" % (
+                    idx, idx + 1, len(UPDATE_MIRRORS)
+                )
+            else:
+                _update_status["message"] = "加速源均失败，尝试直连..."
             _update_status["progress"] = 10
             ok, err = _download_fpk(download_url, fpk_path, _update_status)
             if ok:
@@ -1686,7 +1705,13 @@ def _perform_update(info):
             else:
                 last_error = err
         if not success:
-            raise Exception(last_error or "下载失败")
+            # 所有源都失败时给出可操作的降级路径，而不是只回一句「下载失败」，
+            # 避免用户卡在无法自洽的界面上。
+            raise Exception(
+                "%s。请前往 %s 手动下载 fpk 后，在 应用中心 → 手动安装 上传" %
+                (last_error or "下载失败", info.get("releaseUrl") or
+                 "https://github.com/%s/releases/latest" % UPDATE_REPO)
+            )
         _update_status["message"] = "下载完成！请点击下方按钮下载 fpk，然后前往 应用中心 → 手动安装 上传"
         _update_status["progress"] = 100
         _update_status["updating"] = False
@@ -1695,6 +1720,7 @@ def _perform_update(info):
         _update_status["message"] = "更新失败: %s" % (e,)
         _update_status["progress"] = 0
         _update_status["updating"] = False
+        _update_status["releaseUrl"] = info.get("releaseUrl", "")
 
 
 _update_status = {"updating": False, "progress": 0, "message": ""}

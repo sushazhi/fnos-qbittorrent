@@ -519,6 +519,18 @@
           } else if (!s.updating && s.progress === 0 && s.message && s.message.indexOf('\u5931\u8D25') !== -1) {
             clearInterval(poll);
             progressText.textContent = s.message;
+            // 所有加速源都失败时，后端会回传 releaseUrl，给一条手动下载的出口，
+            // 避免用户只能看到「更新失败」而无事可做。
+            if (s.releaseUrl) {
+              var rel = document.createElement('a');
+              rel.href = s.releaseUrl;
+              rel.target = '_blank';
+              rel.className = 'update-notification-btn update-notification-btn-secondary';
+              rel.style.marginTop = '10px';
+              rel.style.display = 'inline-block';
+              rel.textContent = '\u{1F517} \u524D\u5F80 Release \u9875\u9762\u624B\u52A8\u4E0B\u8F7D';
+              progressText.parentNode.appendChild(rel);
+            }
             btn.disabled = false;
             btn.textContent = '一键更新';
           }

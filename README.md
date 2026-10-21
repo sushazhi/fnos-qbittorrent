@@ -2,7 +2,7 @@
 
 **功能强大的BitTorrent下载工具**，飞牛NAS版，接入统一网关。
 
-![qBittorrent](https://img.shields.io/badge/qBittorrent-5.2.4.0-blue?style=flat-square&logo=qbittorrent)
+![qBittorrent](https://img.shields.io/badge/qBittorrent-5.3.0.0-blue?style=flat-square&logo=qbittorrent)
 ![VueTorrent](https://img.shields.io/badge/VueTorrent-2.35.0-purple?style=flat-square&logo=vue.js)
 ![Platform](https://img.shields.io/badge/Platform-fnOS_1.1.31+-green?style=flat-square&logo=nas)
 ![MCP](https://img.shields.io/badge/MCP-%E2%9C%93%20AI%E6%8E%A5%E5%85%A5-8A2BE2?style=flat-square)
@@ -69,13 +69,13 @@ VueTorrent 为默认WebUI，如需切换至原生WebUI请在 qBittorrent 设置�
 
 1. 打开 **应用中心** → 左下角 **手动安装**
 2. 选择对应架构的fpk文件：
-   - x86设备：`qbittorrent-5.2.4.0-amd64.fpk`
-   - ARM设备：`qbittorrent-5.2.4.0-arm64.fpk`
+   - x86设备：`qbittorrent-5.3.0.0-amd64.fpk`
+   - ARM设备：`qbittorrent-5.3.0.0-arm64.fpk`
 
 或命令行：
 
 ```bash
-appcenter-cli install-local qbittorrent-5.2.4.0-arm64.fpk
+appcenter-cli install-local qbittorrent-5.3.0.0-arm64.fpk
 ```
 
 ---
@@ -89,8 +89,8 @@ appcenter-cli install-local qbittorrent-5.2.4.0-arm64.fpk
 python build.py
 
 # 指定版本与架构
-python build.py --version 5.2.4.0 --arch amd64
-python build.py --version 5.2.4.0 --arch arm64
+python build.py --version 5.3.0.0 --arch amd64
+python build.py --version 5.3.0.0 --arch arm64
 
 # 强制重新下载所有依赖
 python build.py --force
@@ -108,7 +108,7 @@ python build.py --force
 - **跨平台**：一份脚本在 Windows / Linux / macOS 通用，自动检测平台并选择对应的官方 `fnpack` 构建工具（`windows-amd64` / `linux-amd64` / `linux-arm` / `darwin-amd64` / `darwin-arm64`）
 - **零外部依赖**：下载用内置 `urllib`，解压用内置 `zipfile`，无需安装 `curl` / `unzip` / `jq`
 - 自动获取对应版本的qBittorrent-nox和VueTorrent
-- 智能代理策略：直连 → gh.dpik.top → v4.gh-proxy.org 自动切换
+- 智能代理策略：加速源优先、直连兜底，按 `gh-proxy.com` → `v4.gh-proxy.org` → `ghfast.top` → `ghproxy.imciel.com` → 直连 顺序切换（实测直连 github.com 会 0 字节超时，故放最后）
 - 统一更新检测脚本（`app/ui/update-check.js`），同时服务于VueTorrent与原生WebUI
 - 构建产物输出到项目根目录：`qbittorrent-<版本>-<架构>.fpk`
 

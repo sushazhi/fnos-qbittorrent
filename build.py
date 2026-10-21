@@ -34,9 +34,23 @@ VERSION_FILE = os.path.join(BUILD_DIR, "versions.json")
 FNPACK_BASE = "https://static2.fnnas.com/fnpack/fnpack-1.2.3"
 FNPACK_VER = "1.2.3"  # 用于版本缓存判断，需与 FNPACK_BASE 中的版本一致
 
-# 下载源（按顺序尝试）
-MAIN_PROXY = "https://gh.dpik.top/"
-BINARY_PROXY = "https://v4.gh-proxy.org/"
+# GitHub 下载加速源（按顺序尝试，直连放在最后兜底）
+#
+# 选型依据（2026-10 实测，用仓库最新 release 的 39.6MB fpk 逐站测速）：
+#   gh-proxy.com       多轮 0.95~6.4 MB/s，最稳，首选
+#   v4.gh-proxy.org    与 gh-proxy.com 同一后端（实测 x-github-request-id / etag /
+#                      x-cache-hits 完全一致），只能作为节点切换，不能当灾备
+#   ghfast.top         独立运营，但抖动极大（1.8 MB/s ~ 100s 超时）
+#   ghproxy.imciel.com 独立运营，0.5~0.9 MB/s
+#   直连               github.com 可握手但返回 0 字节并超时，仅作最后兜底
+#
+# 已淘汰：gh.dpik.top（实测 0.09 MB/s，且 API 侧 403）。
+GITHUB_PROXIES = [
+    "https://gh-proxy.com/",
+    "https://v4.gh-proxy.org/",
+    "https://ghfast.top/",
+    "https://ghproxy.imciel.com/",
+]
 
 QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 VUE_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
@@ -121,9 +135,11 @@ def download(url, out_file, description, component, version, force, use_proxy=Tr
 
     log(f"  Downloading {description}...", "yellow")
 
+    # 代理优先、直连最后：实测本机直连 github.com 会 0 字节超时，
+    # 把直连放最前会让每次构建先白等一轮超时。
     url_list = []
     if use_proxy:
-        url_list = [url, MAIN_PROXY + url, BINARY_PROXY + url]
+        url_list = [proxy + url for proxy in GITHUB_PROXIES] + [url]
     else:
         url_list = [url]
 
@@ -134,13 +150,16 @@ def download(url, out_file, description, component, version, force, use_proxy=Tr
             req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=300) as resp:
                 data = resp.read()
-            if data and len(data) > 0:
-                with open(out_file, "wb") as f:
-                    f.write(data)
-                save_version(component, version)
-                log(f"  Downloaded {description}", "green")
-                return True
-            last_err = "empty download"
+            # 部分代理在失败时会返回 200 + 错误页/空内容，按大小兜底判断，
+            # 避免把一页 HTML 当成二进制写进缓存。
+            if not data:
+                last_err = "empty download"
+                continue
+            with open(out_file, "wb") as f:
+                f.write(data)
+            save_version(component, version)
+            log(f"  Downloaded {description}", "green")
+            return True
         except Exception as e:
             last_err = str(e)
     log(f"  ERROR: Failed to download {description}: {last_err}", "red")
