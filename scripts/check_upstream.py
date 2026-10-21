@@ -45,8 +45,9 @@ import urllib.request
 
 UPSTREAM_REPO = "userdocs/qbittorrent-nox-static"
 API_BASE = "https://api.github.com"
-# 直连不可用时的镜像（仅代理 GitHub API 的只读请求，不携带令牌）
-API_PROXIES = ("https://gh.dpik.top/", "https://v4.gh-proxy.org/")
+# 不内置任何镜像回退：CI（GitHub Actions）里有 GITHUB_TOKEN，直连必然可用；
+# 自动回退到第三方镜像等于把「版本判定」的输入交给外部服务，还会在直连抖动时
+# 掩盖真实故障。本地无梯子环境可用 --api-base 显式指定镜像。
 RELEASES_PATH = "/repos/%s/releases?per_page=100" % UPSTREAM_REPO
 
 TAG_RE = re.compile(r"^release-(\d+(?:\.\d+)*)_v(\d+(?:\.\d+)*)$")
@@ -104,10 +105,14 @@ def http_get_json(url, token=None, timeout=30):
 
 
 def fetch_releases(token=None, api_base=""):
+    """获取上游 release 列表。
+
+    默认只请求 api.github.com；只有显式传入 api_base 才会改用镜像地址。
+    """
     if api_base:
         bases = [api_base.rstrip("/")]
     else:
-        bases = [API_BASE] + [p + API_BASE for p in API_PROXIES]
+        bases = [API_BASE]
 
     errors = []
     for base in bases:
