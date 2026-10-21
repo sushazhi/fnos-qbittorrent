@@ -108,7 +108,7 @@ python build.py --force
 - **跨平台**：一份脚本在 Windows / Linux / macOS 通用，自动检测平台并选择对应的官方 `fnpack` 构建工具（`windows-amd64` / `linux-amd64` / `linux-arm` / `darwin-amd64` / `darwin-arm64`）
 - **零外部依赖**：下载用内置 `urllib`，解压用内置 `zipfile`，无需安装 `curl` / `unzip` / `jq`
 - 自动获取对应版本的qBittorrent-nox和VueTorrent
-- 智能代理策略：加速源优先、直连兜底，按 `gh-proxy.com` → `v4.gh-proxy.org` → `ghfast.top` → `ghproxy.imciel.com` → 直连 顺序切换（实测直连 github.com 会 0 字节超时，故放最后）
+- 智能代理策略：直连优先、加速源兜底。先直连 `github.com`，用 15 秒短超时（`DIRECT_PROBE_TIMEOUT`）探测连接与首包；探测失败才按 `gh-proxy.com` → `v4.gh-proxy.org` → `ghfast.top` → `ghproxy.imciel.com` 顺序切换。直连可用时享满速，被墙时最多只损失一次探测的时间
 - 统一更新检测脚本（`app/ui/update-check.js`），同时服务于VueTorrent与原生WebUI
 - 构建产物输出到项目根目录：`qbittorrent-<版本>-<架构>.fpk`
 

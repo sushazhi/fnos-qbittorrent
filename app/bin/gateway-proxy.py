@@ -111,6 +111,11 @@ UPDATE_API = "https://api.github.com"
 #   直连               github.com 可握手但返回 0 字节并超时
 #
 # 已淘汰：gh.dpik.top（实测 0.09 MB/s，且 API 侧 403）。
+#
+# 下载顺序（2026-10 调整）：直连优先，失败再走加速源。
+# 直连探测用 DIRECT_PROBE_TIMEOUT 短超时，避免像旧实现那样先白等 120s
+# 才切源——直连能通时享受满速，被墙时最多损失一次探测的时间。
+DIRECT_PROBE_TIMEOUT = 15  # 直连探测超时（秒）
 UPDATE_MIRRORS = (
     "https://gh-proxy.com/",
     "https://v4.gh-proxy.org/",
@@ -1588,7 +1593,19 @@ def _validate_fpk(path):
         return False, str(e)
 
 
-def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
+def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE,
+                  total_timeout=DOWNLOAD_TIMEOUT, probe_timeout=30,
+                  source_label=""):
+    """下载 fpk。
+
+    probe_timeout 同时作用于「建立连接」和「首包到达」两个阶段：
+    直连探测时传一个较小的值，被墙时能快速失败并切到加速源，
+    而不是把固定的 30s 连接超时白等满。
+
+    source_label 是当前线路的可读名称（如「直连」「加速源 1: gh-proxy.com」），
+    会拼进进度文案，让用户知道这次下载走的是哪条线路。
+    """
+    import socket
     import urllib.request
     import urllib.error
     tmp = dest + ".part"
@@ -1596,11 +1613,13 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
         os.remove(tmp)
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        resp = urllib.request.urlopen(req, timeout=30)
+        resp = urllib.request.urlopen(req, timeout=probe_timeout)
     except urllib.error.HTTPError as e:
         return False, "HTTP %d %s" % (e.code, e.reason)
     except urllib.error.URLError as e:
         return False, "网络错误: %s" % (e.reason,)
+    except (socket.timeout, TimeoutError):
+        return False, "连接超时 (%ds)" % probe_timeout
     except Exception as e:
         return False, "连接失败: %s" % (e,)
     if resp.status != 200:
@@ -1611,23 +1630,37 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
         resp.close()
         return False, "文件过大 (%.1fMB > %.1fMB)" % (total / 1024 / 1024, max_size / 1024 / 1024)
     try:
-        resp.fp.raw._sock.settimeout(30)
+        resp.fp.raw._sock.settimeout(probe_timeout)
     except Exception:
         pass
     downloaded = 0
     start_time = time.time()
+    first_byte_at = None
     try:
         with open(tmp, 'wb') as f:
             while True:
                 elapsed = time.time() - start_time
-                if elapsed > DOWNLOAD_TIMEOUT:
+                if elapsed > total_timeout:
                     resp.close()
                     os.remove(tmp)
                     return False, "下载超时 (已耗时 %ds，超过限制 %ds)" % (
-                        int(elapsed), DOWNLOAD_TIMEOUT)
+                        int(elapsed), total_timeout)
+                # 首包迟迟不到（典型表现：握手成功但返回 0 字节挂死），
+                # 视为该线路不可用，交给调用方切下一个源。
+                if first_byte_at is None and elapsed > probe_timeout:
+                    resp.close()
+                    os.remove(tmp)
+                    return False, "首包超时 (%ds 内无数据)" % probe_timeout
                 chunk = resp.read(65536)
                 if not chunk:
                     break
+                if first_byte_at is None:
+                    first_byte_at = time.time()
+                    # 首包已到，说明线路可用，恢复常规读超时
+                    try:
+                        resp.fp.raw._sock.settimeout(30)
+                    except Exception:
+                        pass
                 f.write(chunk)
                 downloaded += len(chunk)
                 if downloaded > max_size:
@@ -1637,8 +1670,14 @@ def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE):
                 if total > 0:
                     pct = 10 + int(downloaded / total * 50)
                     status["progress"] = pct
-                    status["message"] = "正在下载... %.1fMB/%.1fMB" % (
+                    status["message"] = "%s：正在下载 %.1fMB/%.1fMB" % (
+                        source_label or "下载中",
                         downloaded / 1024 / 1024, total / 1024 / 1024)
+                else:
+                    # 服务端未给 Content-Length 时无法算百分比，至少让用户看到
+                    # 当前走的是哪条线路和已下载的量
+                    status["message"] = "%s：正在下载 %.1fMB" % (
+                        source_label or "下载中", downloaded / 1024 / 1024)
     except Exception as e:
         resp.close()
         if os.path.exists(tmp):
@@ -1669,23 +1708,30 @@ def _perform_update(info):
         _update_status["message"] = "正在准备更新..."
         _update_status["progress"] = 5
         fpk_path = "/tmp/qbittorrent-update.fpk"
-        # 代理优先、直连最后：实测直连 github.com 会 0 字节超时，
-        # 放最前只会让用户先白等一轮超时（旧实现为 3 个源 × 最长 120s）。
-        urls = [mirror + fpk_url for mirror in UPDATE_MIRRORS] + [fpk_url]
+        # 直连优先、加速源兜底：直连能通时享受满速和原始文件；
+        # 被墙时用 DIRECT_PROBE_TIMEOUT 短超时快速探测失败，
+        # 只损失一次探测时间（而不是旧实现直连放最后、或直连放最前白等 120s）。
+        urls = [fpk_url] + [mirror + fpk_url for mirror in UPDATE_MIRRORS]
         success = False
         last_error = ""
         for idx, download_url in enumerate(urls):
             if idx == 0:
-                _update_status["message"] = "正在下载更新包..."
-            elif idx < len(UPDATE_MIRRORS):
-                _update_status["message"] = "加速源 %d 失败，切换下一个源...（%d/%d）" % (
-                    idx, idx + 1, len(UPDATE_MIRRORS)
-                )
+                source_label = "直连 GitHub"
+                _update_status["message"] = "正在直连下载更新包..."
+                kwargs = {"probe_timeout": DIRECT_PROBE_TIMEOUT}
             else:
-                _update_status["message"] = "加速源均失败，尝试直连..."
+                # idx 从 1 开始对应 UPDATE_MIRRORS 的下标 idx-1
+                mirror_host = UPDATE_MIRRORS[idx - 1].split("//", 1)[-1].rstrip("/")
+                source_label = "加速源 %d/%d（%s）" % (idx, len(UPDATE_MIRRORS), mirror_host)
+                _update_status["message"] = "直连不可用，切换到%s..." % source_label
+                kwargs = {}
             _update_status["progress"] = 10
-            ok, err = _download_fpk(download_url, fpk_path, _update_status)
+            ok, err = _download_fpk(download_url, fpk_path, _update_status,
+                                    source_label=source_label, **kwargs)
             if ok:
+                # 下载已结束，校验/比对大小还要几秒，先给个明确文案，
+                # 否则界面会一直挂在「正在下载 xMB/xMB」上像卡住。
+                _update_status["message"] = "下载完成，正在校验更新包完整性..."
                 valid, reason = _validate_fpk(fpk_path)
                 if not valid:
                     last_error = "文件校验失败: %s" % reason
@@ -1703,7 +1749,7 @@ def _perform_update(info):
                 success = True
                 break
             else:
-                last_error = err
+                last_error = "%s 失败：%s" % (source_label, err)
         if not success:
             # 所有源都失败时给出可操作的降级路径，而不是只回一句「下载失败」，
             # 避免用户卡在无法自洽的界面上。
@@ -1712,7 +1758,7 @@ def _perform_update(info):
                 (last_error or "下载失败", info.get("releaseUrl") or
                  "https://github.com/%s/releases/latest" % UPDATE_REPO)
             )
-        _update_status["message"] = "下载完成！请点击下方按钮下载 fpk，然后前往 应用中心 → 手动安装 上传"
+        _update_status["message"] = "已通过「%s」下载完成！请点击下方按钮下载 fpk，然后前往 应用中心 → 手动安装 上传" % source_label
         _update_status["progress"] = 100
         _update_status["updating"] = False
         _update_status["downloadUrl"] = PREFIX + "/api/update/download"
