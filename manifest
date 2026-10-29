@@ -25,4 +25,4 @@ desktop_uidir = ui
 desktop_applaunchname = qbittorrent.Application
 
 # 更新日志
-changelog = v5.3.0.1<br>1. 修复启动后 1 秒自动退出、误报“端口被占用”（残留实例锁与异常目录权限）<br>2. 修复 MCP 服务鉴权失效（AI 客户端一律 401）与复制 API Key 为空<br>3. 修复覆盖安装后自定义端口、WebUI 密码被重置，UI 切换不生效<br>4. 端口被占用时自动顺延；网关接口与 MCP 增加来源校验和完整性校验
+changelog = v5.3.0.1<br>1. 修复启动后 1 秒自动退出、误报“端口被占用”（残留实例锁与异常目录权限）<br>2. 修复 MCP 服务鉴权失效（AI 客户端一律 401）与复制 API Key 为空
