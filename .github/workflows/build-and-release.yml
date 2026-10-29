@@ -240,10 +240,6 @@ jobs:
           echo "Fetching VueTorrent LICENSE (MIT)..."
           wget -q "$VUE_LICENSE_URL" -O app/ui/vuetorrent/LICENSE || echo "WARNING: failed to fetch VueTorrent LICENSE (MIT notice may be missing in package)"
 
-          # 把版本落盘，随 source 一起留在工作区，方便事后核对构建输入
-          printf 'vuetorrent=%s\nrequested=%s\n' \
-            "${VUE_VER}" "${VUETORRENT_VERSION:-latest}" > vuetorrent-version.txt
-
       - name: Inject update check into VueTorrent WebUI
         run: |
           if [ -f app/ui/update-check.js ]; then
