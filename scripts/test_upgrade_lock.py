@@ -2,32 +2,44 @@
 """
 验证 cmd/upgrade_lock.sh 的状态机逻辑。
 
-本机 MSYS2 无 flock，无法真实加锁，因此这里用 Python 按 flock(2) 语义
-（同一文件的独占锁，进程退出自动释放，fd 关闭释放）建模，
-复现真实故障场景，验证脚本的判定逻辑是否正确。
+原始开发机（Windows/MSYS2）无 flock，无法真实加锁，因此这里用 Python 按 flock(2)
+语义（同一文件的独占锁，进程退出自动释放，fd 关闭释放）建模，
+复现真实故障场景，验证脚本的判定逻辑是否正确；Linux 上有 flock 时按真实能力判定。
 
 真正验证的是：给定"锁是否被持有 / 持有者是否存活"，脚本作出的决策是否正确。
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
-BASH = None
-for cand in [r"C:\Program Files\Git\bin\bash.exe", "bash"]:
-    try:
-        r = subprocess.run([cand, "-c", "echo ok"], capture_output=True, text=True)
-        if r.returncode == 0:
-            BASH = cand
-            break
-    except Exception:
-        continue
+# 仓库根目录改为以脚本自身位置推导，不再硬编码 Windows 路径
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_bash():
+    """bash 解析顺序：PATH -> 环境变量 QBT_BASH -> /bin/bash；均不可用返回 None。"""
+    candidates = [shutil.which("bash"), os.environ.get("QBT_BASH"), "/bin/bash"]
+    for cand in candidates:
+        if not cand:
+            continue
+        try:
+            r = subprocess.run([cand, "-c", "echo ok"], capture_output=True, text=True)
+            if r.returncode == 0:
+                return cand
+        except Exception:
+            continue
+    return None
+
+
+BASH = find_bash()
 
 if not BASH:
     print("SKIP: 找不到 bash")
     sys.exit(0)
 
-LOCK_LIB = r"D:/fnos/fnos-qbittorrent/cmd/upgrade_lock.sh"
+LOCK_LIB = os.path.join(REPO, "cmd", "upgrade_lock.sh")
 
 passed, failed = 0, 0
 

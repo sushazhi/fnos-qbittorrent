@@ -16,8 +16,20 @@ import subprocess
 import sys
 import tempfile
 
-BASH = r"C:\Program Files\Git\bin\bash.exe"
-PROJ = r"D:/fnos/fnos-qbittorrent"
+# 仓库根目录由脚本自身位置推导，不再硬编码维护者机器上的 Windows 路径
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_bash():
+    """bash 解析顺序：PATH -> 环境变量 QBT_BASH -> /bin/bash。"""
+    found = shutil.which("bash")
+    if found:
+        return found
+    return os.environ.get("QBT_BASH") or "/bin/bash"
+
+
+BASH = find_bash()
+PROJ = REPO  # 兼容原有变量名，指向本仓库根目录
 
 
 def extract_backup_section():

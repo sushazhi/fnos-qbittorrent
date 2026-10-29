@@ -2,16 +2,30 @@
 """
 模拟 qbt_lock 的两种失败分支，验证 upgrade_init 的错误提示是否准确。
 
-本机 MSYS2 缺少 flock 且不认无执行位的脚本桩，因此改用 bash 函数覆盖 flock，
-在同一进程内替换真实 flock 的行为，从而真实检验 qbt_lock 的判定逻辑与返回码。
+缺 flock 的环境（如 Windows/MSYS2，且不认无执行位的脚本桩）无法直接加锁，
+因此统一改用 bash 函数覆盖 flock（Linux 上同样适用且行为等价）：在同一进程内
+替换真实 flock 的行为，从而真实检验 qbt_lock 的判定逻辑与返回码。
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
-BASH = r"C:\Program Files\Git\bin\bash.exe"
-LIB = r"D:/fnos/fnos-qbittorrent/cmd/upgrade_lock.sh"
+# 仓库根目录与 bash 均改为可移植解析，不再硬编码 Windows 路径
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_bash():
+    """bash 解析顺序：PATH -> 环境变量 QBT_BASH -> /bin/bash。"""
+    found = shutil.which("bash")
+    if found:
+        return found
+    return os.environ.get("QBT_BASH") or "/bin/bash"
+
+
+BASH = find_bash()
+LIB = os.path.join(REPO, "cmd", "upgrade_lock.sh")
 
 
 def run_case(flock_behavior, owner_pid, label, expect_busy):

@@ -12,12 +12,25 @@ qbittorrent.upgrade.lock。此后每次点升级都会报
   C. 新锁位置在 TRIM_PKGVAR，即使 TRIM_PKGTMP 被 fnOS 清空也不受影响
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 
-BASH = r"C:\Program Files\Git\bin\bash.exe"
-PROJ = r"D:/fnos/fnos-qbittorrent"
+# 仓库根目录与 bash 均改为可移植解析，不再硬编码 Windows 路径
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_bash():
+    """bash 解析顺序：PATH -> 环境变量 QBT_BASH -> /bin/bash。"""
+    found = shutil.which("bash")
+    if found:
+        return found
+    return os.environ.get("QBT_BASH") or "/bin/bash"
+
+
+BASH = find_bash()
+PROJ = REPO  # 兼容原有变量名，指向本仓库根目录
 
 
 def sandbox():

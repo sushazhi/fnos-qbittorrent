@@ -13,17 +13,30 @@
   5. 重装 5.3.0.0
 """
 import json
+import os
 import sys
 import time
 
-import os
-import paramiko
+# paramiko 改为软导入：未安装时走 SKIP 而不是 ImportError；
+# 本地 fpk 路径以脚本自身位置推导，不再硬编码维护者机器上的 Windows 路径。
+try:
+    import paramiko
+except ImportError:
+    paramiko = None
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HOST = os.environ.get("QBT_NAS_HOST", "")
 USER = os.environ.get("QBT_NAS_USER", "")
 PASS = os.environ.get("QBT_NAS_PASS", "")
-FPK = "/vol1/appcenter-downloads/qbittorrent-5.3.0.0-tpk"  # 已解包目录
-LOCAL_FPK = r"D:/fnos/fnos-qbittorrent/qbittorrent-5.3.0.0-arm64.fpk"
+FPK = "/vol1/appcenter-downloads/qbittorrent-5.3.0.0-tpk"  # 已解包目录（远端路径）
+LOCAL_FPK = os.path.join(REPO, "qbittorrent-5.3.0.0-arm64.fpk")
+
+
+def skip(msg):
+    """缺少 NAS 凭据/依赖时优雅跳过，退出码 0。"""
+    print(f"[SKIP] {msg}")
+    return 0
 
 
 def ssh():
@@ -43,6 +56,12 @@ def sh(c, cmd, timeout=120):
 
 
 def main():
+    # 先在入口处做依赖/凭据检查，避免在无 NAS 的本机或 CI 上崩掉
+    if not HOST:
+        return skip("缺少 QBT_NAS_HOST")
+    if paramiko is None:
+        return skip("未安装 paramiko")
+
     c = ssh()
 
     print("=" * 66)

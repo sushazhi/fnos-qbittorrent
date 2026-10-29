@@ -12,16 +12,18 @@
   4. 输出中不得出现重复的 section 或重复的 DefaultSavePath
 """
 import base64
+import os
 import re
 import sys
 
-import os
-import paramiko
+# 仓库根目录由脚本自身位置推导，不再硬编码维护者机器上的 Windows 路径；
+# paramiko 改为使用时再导入，未安装时走 SKIP 而不是 ImportError。
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HOST = os.environ.get("QBT_NAS_HOST", "")
 USER = os.environ.get("QBT_NAS_USER", "")
 PASS = os.environ.get("QBT_NAS_PASS", "")
-LOCAL = r"D:/fnos/fnos-qbittorrent/cmd/install_callback"
+LOCAL = os.path.join(REPO, "cmd", "install_callback")
 
 
 def extract_awk_and_port_logic():
@@ -34,10 +36,11 @@ def extract_awk_and_port_logic():
 
     # 完整提取 CUR_PORT 段：从赋值行到 `echo "Preserving WebUI port` 之前，
     # 必须包含 case 兜底与 -gt 0 检查，否则非法值/缺失值不会被回退。
+    # 起点兼容历史写法 CUR_PORT=$(grep …) 与现写法 CUR_PORT=$(awk …)。
     lines = content.splitlines()
     start_idx = end_idx = None
     for idx, line in enumerate(lines):
-        if line.strip().startswith("CUR_PORT=$(grep"):
+        if line.strip().startswith("CUR_PORT=$("):
             start_idx = idx
         if start_idx is not None and "Preserving WebUI port" in line:
             end_idx = idx
@@ -85,7 +88,7 @@ Session\DefaultSavePath=/x
 WebUI\Address=0.0.0.0
 """,
         [
-            ("WebUI\\Port=8080", True, "缺失时补默认端口"),
+            ("Port=8080", True, "缺失时补默认端口（写进 [WebUI] 段，qBittorrent 5.x 规范）"),
             ("WebUI\\Address=0.0.0.0", True, "地址保留"),
         ],
     ),
@@ -109,6 +112,16 @@ def main():
         return 1
 
     awk_b64 = base64.b64encode(awk_body.encode()).decode()
+
+    # 缺少 NAS 凭据或 paramiko 时优雅跳过，退出码 0（本机/CI 无 NAS 也可运行）
+    if not HOST:
+        print("[SKIP] 缺少 QBT_NAS_HOST")
+        return 0
+    try:
+        import paramiko
+    except ImportError:
+        print("[SKIP] 未安装 paramiko")
+        return 0
 
     c = paramiko.SSHClient()
     c.set_missing_host_key_policy(paramiko.AutoAddPolicy())

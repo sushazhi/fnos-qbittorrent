@@ -1509,12 +1509,15 @@ def _get_ui_signature():
 def _is_static_cacheable(method, path):
     if method != 'GET':
         return False
-    if path.startswith('/api/'):
+    # 只看路径本体：VueTorrent 的静态资源常带 ?v=xxx 之类的查询串，
+    # 把查询串算进扩展名判断会让这类资源全部落不进缓存路径
+    clean = path.split('?', 1)[0]
+    if clean.startswith('/api/'):
         return False
-    idx = path.rfind('.')
+    idx = clean.rfind('.')
     if idx < 0:
         return False
-    return path[idx + 1:].lower() in STATIC_EXTENSIONS
+    return clean[idx + 1:].lower() in STATIC_EXTENSIONS
 
 
 def _is_home_path(path):
@@ -2028,7 +2031,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _api_guard_ok(self):
+    def _api_guard_ok(self, require_token=True):
         """代理自有 /api 端点的来源校验。
 
         这些端点不经过 qBittorrent 自己的鉴权（它们由代理直接处理，
@@ -2048,6 +2051,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             origin_host = m.group(0).split("//", 1)[-1].split(":")[0] if m else ""
             if not host or origin_host != host:
                 return False
+        if not require_token:
+            # 少数端点由浏览器直接导航访问（如更新包下载），带不了自定义头；
+            # 对这些端点只做来源校验，不放宽到"任意跨站请求"
+            return True
         got = (self.headers.get("X-Qbt-Token") or "").strip()
         return bool(got) and hmac.compare_digest(got, _API_TOKEN)
 
@@ -2065,7 +2072,9 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def _handle_api(self, path):
         if path not in self._OWNED_APIS:
             return False
-        if not self._api_guard_ok():
+        # 更新包下载走 <a download> 普通导航，无法携带自定义头，只校验来源
+        need_token = path != "/api/update/download"
+        if not self._api_guard_ok(require_token=need_token):
             self.close_connection = True
             self._send_json(403, {"success": False,
                                   "error": "请求未通过来源校验，请刷新页面后重试"})

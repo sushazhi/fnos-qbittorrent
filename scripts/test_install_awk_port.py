@@ -6,15 +6,17 @@
 检查用户设置的 WebUI\\Port=9999 是否被强行改回 8080。
 """
 import base64
+import os
 import sys
 
-import os
-import paramiko
+# 仓库根目录由脚本自身位置推导，不再硬编码维护者机器上的 Windows 路径；
+# paramiko 改为使用时再导入，未安装时走 SKIP 而不是 ImportError。
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HOST = os.environ.get("QBT_NAS_HOST", "")
 USER = os.environ.get("QBT_NAS_USER", "")
 PASS = os.environ.get("QBT_NAS_PASS", "")
-LOCAL = r"D:/fnos/fnos-qbittorrent/cmd/install_callback"
+LOCAL = os.path.join(REPO, "cmd", "install_callback")
 
 
 def main():
@@ -34,6 +36,16 @@ def main():
         print("  " + line)
 
     b64 = base64.b64encode(awk_body.encode()).decode()
+
+    # 缺少 NAS 凭据或 paramiko 时优雅跳过，退出码 0（本地抽取已在上面完成，不需要 NAS）
+    if not HOST:
+        print("[SKIP] 缺少 QBT_NAS_HOST")
+        return 0
+    try:
+        import paramiko
+    except ImportError:
+        print("[SKIP] 未安装 paramiko")
+        return 0
 
     c = paramiko.SSHClient()
     c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
