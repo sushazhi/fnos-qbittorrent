@@ -15,6 +15,7 @@ import os
 import socket
 import sys
 import threading
+import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MCP = os.path.join(REPO, "app", "bin", "mcp-server.py")
@@ -136,8 +137,11 @@ def test_concurrency_cap(mcp):
         hold = [socket.create_connection(("127.0.0.1", port), timeout=5) for _ in range(1)]
         for s in hold:
             s.sendall(b"POST /mcp HTTP/1.1\r\nHost: x\r\nContent-Length: 999\r\n\r\n{")
-        import time
-        time.sleep(0.3)
+        # 等服务器真正把这个连接计入工作线程再打第二个请求：
+        # 固定 sleep 在慢机器上会偶发失败（连接还没被 accept 就发起了下一请求）
+        deadline = time.time() + 5
+        while time.time() < deadline and server._workers < 1:
+            time.sleep(0.02)
         resp = http_request(port, b"GET /mcp HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
         check("超出并发上限返回 503", b"503" in resp.split(b"\r\n")[0], resp[:120])
         for s in hold:

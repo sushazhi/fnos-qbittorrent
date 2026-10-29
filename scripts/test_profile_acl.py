@@ -80,7 +80,10 @@ def test_repair_acl():
             print("  [SKIP] 文件系统不支持 ACL")
             return
         subprocess.run(["setfacl", "-m", "d:u::---", bt_dir], check=False)
-        subprocess.run(["setfacl", "-m", "g:Users:rw-", cfg_dir], check=False)
+        # group:Users 是 fnOS 的授权组；非 fnOS 环境（如 GitHub runner）没有这个组，
+        # setfacl 会直接失败。这条断言只在组真实存在时才有意义。
+        grp = subprocess.run(["setfacl", "-m", "g:Users:rw-", cfg_dir], capture_output=True, text=True)
+        has_users_group = grp.returncode == 0
 
         lock = os.path.join(cfg_dir, "lockfile")
         with open(lock, "w", encoding="utf-8") as f:
@@ -93,7 +96,10 @@ def test_repair_acl():
         check("config 默认 ACL 已修复", "default:user::rw-" in acl_of_dir(cfg_dir), acl_of_dir(cfg_dir))
         check("BT_backup 默认 ACL 已修复", "default:user::rw-" in acl_of_dir(bt_dir), acl_of_dir(bt_dir))
         check("文件属主可读", acl_of_file(lock) != "---", acl_of_file(lock))
-        check("fnOS 的 group:Users 授权保留", "group:Users:rw-" in acl_of_dir(cfg_dir), acl_of_dir(cfg_dir))
+        if has_users_group:
+            check("fnOS 的 group:Users 授权保留", "group:Users:rw-" in acl_of_dir(cfg_dir), acl_of_dir(cfg_dir))
+        else:
+            print("  [SKIP] 本机无 Users 组（非 fnOS 环境），跳过 group 授权保留断言")
         check("有修复日志", "已修复" in out, out)
     finally:
         shutil.rmtree(root, ignore_errors=True)
