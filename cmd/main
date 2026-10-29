@@ -2,9 +2,13 @@
 # cmd/main - qBittorrent应用生命周期管理脚本
 
 APP_NAME="qbittorrent"
+# 生命周期脚本由 fnOS 传入该变量；脱离宿主手工调用时给个兜底，
+# 避免 echo ... > "" 静默丢错误信息
+TRIM_TEMP_LOGFILE="${TRIM_TEMP_LOGFILE:-/tmp/${APP_NAME}-lifecycle.log}"
 BIN_DIR="${TRIM_APPDEST}/bin"
 DATA_DIR="${TRIM_PKGVAR}"
 CONFIG_FILE="${DATA_DIR}/qBittorrent/config/qBittorrent.conf"
+LOCK_FILE="${DATA_DIR}/qBittorrent/config/lockfile"
 PID_FILE="${TRIM_PKGTMP}/${APP_NAME}.pid"
 PROXY_PID_FILE="${TRIM_PKGTMP}/${APP_NAME}-proxy.pid"
 LOG_FILE="${TRIM_PKGVAR}/${APP_NAME}.log"
@@ -17,6 +21,8 @@ LOG_MAX_SIZE=1048576
 LOG_MAX_FILES=3
 
 WEBUI_PORT="8080"
+WEBUI_ADDRESS="0.0.0.0"
+WEBUI_PORT_SCAN=100   # 端口被占用时，最多向后顺延探测多少个端口
 
 rotate_logs() {
     if [ -f "$LOG_FILE" ]; then
@@ -37,12 +43,164 @@ rotate_logs() {
 }
 
 read_qbt_port() {
-    if [ -f "$CONFIG_FILE" ]; then
-        PORT_FROM_CONFIG=$(grep -E "^WebUI\\\\Port=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
-        if [ -n "$PORT_FROM_CONFIG" ] && [ "$PORT_FROM_CONFIG" -gt 0 ] 2>/dev/null; then
-            WEBUI_PORT="$PORT_FROM_CONFIG"
-        fi
+    [ -f "$CONFIG_FILE" ] || return 0
+    # 权威写法是 [WebUI] 段里的 Port=；同时兼容历史遗留的 WebUI\Port= 形式。
+    # 老实现只认 WebUI\Port=，而 qBittorrent 自己写的是 [WebUI] 段内的 Port=，
+    # 于是用户在 WebUI 里改过的端口读不回来，启动时又被打回默认值。
+    PORT_FROM_CONFIG=$(awk '
+        /^\[/ { in_webui = ($0 == "[WebUI]"); next }
+        in_webui && /^[ \t]*Port=/ { sub(/^[ \t]*Port=/, ""); v = $0; exit }
+        /^[ \t]*WebUI\\Port=/ { sub(/^[ \t]*WebUI\\Port=/, ""); v = $0 }
+        END { if (v != "") print v }
+    ' "$CONFIG_FILE" 2>/dev/null | tr -d ' \r\n')
+    case "$PORT_FROM_CONFIG" in
+        ''|*[!0-9]*) return 0 ;;
+    esac
+    if [ "$PORT_FROM_CONFIG" -ge 1024 ] && [ "$PORT_FROM_CONFIG" -le 65535 ]; then
+        WEBUI_PORT="$PORT_FROM_CONFIG"
     fi
+}
+
+# 判断 $1:$2 能否被绑定。qBittorrent 就监听在这个地址上，
+# 用真实 bind 探测比“能否连上”更贴近实际语义（监听中的端口一定 bind 失败）。
+# 带 SO_REUSEADDR 与 qBittorrent 行为一致：TIME_WAIT 残留不会误判成占用。
+port_available() {
+    local addr="$1"
+    local port="$2"
+    case "$addr" in
+        ''|'*') addr="0.0.0.0" ;;
+    esac
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$addr" "$port" >/dev/null 2>&1 <<'PY'
+import errno
+import socket
+import sys
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+try:
+    sock.bind((sys.argv[1], int(sys.argv[2])))
+except OSError as exc:
+    # 2 = 地址本身有问题（例如配了个本机没有的 IP），不该算成“被占用”
+    sys.exit(2 if exc.errno != errno.EADDRINUSE else 1)
+finally:
+    sock.close()
+PY
+        case "$?" in
+            0) return 0 ;;   # 能 bind：空闲
+            1) return 1 ;;   # EADDRINUSE：被占用
+            *) return 0 ;;   # 地址不可绑等异常：不归因于占用，交给 qBittorrent 报真实错误
+        esac
+    fi
+    # 退化为“能否连上”：有服务在监听即视为占用；
+    # 连不上或环境不支持 /dev/tcp 时按空闲处理（宁可启动失败并报出真实原因，
+    # 也不要把可用端口误判成被占用而白白顺延）
+    if (exec 3<>"/dev/tcp/${addr}/${port}") >/dev/null 2>&1; then
+        return 1
+    fi
+    return 0
+}
+
+# 网关模式下 WebUI 端口只是代理与本机 qBittorrent 之间的内部端口，
+# 与其他应用/容器撞车时顺延一个可用端口即可，不能因此让应用启动失败。
+resolve_webui_port() {
+    local port="$1"
+    local last=$((port + WEBUI_PORT_SCAN))
+    while [ "$port" -le "$last" ]; do
+        if port_available "$WEBUI_ADDRESS" "$port"; then
+            echo "$port"
+            return 0
+        fi
+        port=$((port + 1))
+    done
+    return 1
+}
+
+# 把端口写回 qBittorrent 配置，保证重启后代理读取到的端口与 qBittorrent 一致。
+# 只改 [WebUI] 段内的 Port=，并顺手丢弃历史遗留的 WebUI\Port= 重复键：
+# 那些键落在 [WebUI] 段里会被解析成 WebUI\WebUI\Port，既无效又把配置搅乱。
+set_config_port() {
+    local port="$1"
+    local tmp_file="${CONFIG_FILE}.port.$$"
+    awk -v p="$port" '
+        BEGIN { in_webui = 0; seen_webui = 0; wrote = 0 }
+        /^\[/ {
+            if (in_webui && !wrote) { print "Port=" p; wrote = 1 }
+            in_webui = ($0 == "[WebUI]")
+            if (in_webui) seen_webui = 1
+            print
+            next
+        }
+        /^[ \t]*WebUI\\Port=/ { next }
+        in_webui && /^[ \t]*Port=/ {
+            if (!wrote) { print "Port=" p; wrote = 1 }
+            next
+        }
+        { print }
+        END {
+            if (in_webui && !wrote) { print "Port=" p }
+            if (!seen_webui) { print "[WebUI]"; print "Port=" p }
+        }
+    ' "$CONFIG_FILE" > "$tmp_file" 2>/dev/null && mv "$tmp_file" "$CONFIG_FILE"
+    rm -f "$tmp_file"
+}
+
+# 老版本 bug 会把 WebUI\Port= 写进 [WebUI] 段，解析后变成 WebUI\WebUI\Port：
+# 既是废键，又让人误以为端口配了两处。发现就顺手规范化一次。
+normalize_config_port() {
+    [ -f "$CONFIG_FILE" ] || return 0
+    if awk '
+        /^\[/ { in_webui = ($0 == "[WebUI]"); next }
+        in_webui && /^[ \t]*WebUI\\Port=/ { found = 1 }
+        END { exit(found ? 0 : 1) }
+    ' "$CONFIG_FILE" 2>/dev/null; then
+        set_config_port "$WEBUI_PORT" && echo '已规范化配置中的重复端口键（[WebUI] 段内的 WebUI\Port=）'
+    fi
+}
+
+read_qbt_address() {
+    local addr
+    addr=$(grep -E "^[ \t]*(WebUI\\\\)?Address=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d ' \r\n')
+    [ -n "$addr" ] && WEBUI_ADDRESS="$addr"
+}
+
+# qBittorrent 用 profile 下的 lockfile 做单实例判定。文件存在但内容读不出来时
+# （上一次被 kill -9 留下的死 PID，或 ACL 把属主读权限剥掉），它会认定
+# “已有实例在运行”，启动 1 秒内静默退出，日志里只有一条“终止操作”，
+# 排查时极易误判成端口被占用。走到这里已确认本应用没有实例在跑，
+# 残留锁可以直接删掉，qBittorrent 启动时会重建。
+clean_stale_lockfile() {
+    [ -f "$LOCK_FILE" ] || return 0
+    local stale_pid=""
+    if [ -r "$LOCK_FILE" ]; then
+        stale_pid=$(head -1 "$LOCK_FILE" 2>/dev/null | tr -cd '0-9')
+    fi
+    if [ -n "$stale_pid" ] && ps -p "$stale_pid" > /dev/null 2>&1; then
+        # 持有者进程还活着：可能是并发启动，交给后面的 pgrep 逻辑处理
+        echo "提示：实例锁仍被存活进程 ${stale_pid} 持有，暂不清理"
+        return 0
+    fi
+    rm -f "$LOCK_FILE" 2>/dev/null && echo "已清理残留实例锁：$LOCK_FILE"
+}
+
+# 历史遗留的 default:user::--- 会让 profile 目录下新建的文件属主自己都读不了，
+# 典型受害文件就是 lockfile（以及 BT_backup 里新写的 .fastresume）。
+# 这里只修这一项，其余 ACL（group:Users 等 fnOS 授权）原样保留。
+repair_profile_acls() {
+    command -v getfacl > /dev/null 2>&1 || return 0
+    command -v setfacl > /dev/null 2>&1 || return 0
+    local dir
+    for dir in \
+        "${DATA_DIR}/qBittorrent" \
+        "${DATA_DIR}/qBittorrent/config" \
+        "${DATA_DIR}/qBittorrent/data" \
+        "${DATA_DIR}/qBittorrent/data/logs" \
+        "${DATA_DIR}/qBittorrent/data/BT_backup"; do
+        [ -d "$dir" ] || continue
+        if getfacl -p "$dir" 2>/dev/null | grep -q '^default:user::---'; then
+            setfacl -m d:u::rw- "$dir" 2>/dev/null && echo "已修复目录默认 ACL：$dir"
+        fi
+    done
 }
 
 kill_orphan_proxies() {
@@ -57,6 +215,13 @@ kill_orphan_proxies() {
         fi
         kill -9 "$pid" 2>/dev/null && echo "清理残留代理进程 PID: $pid"
     done
+}
+
+kill_orphan_mcps() {
+    # MCP 由代理托管；代理被强杀后 MCP 会沦为孤儿并一直占着 8082，
+    # 新实例绑不上端口只在日志里留下 Errno 98 的报错，很容易被误读成
+    # “WebUI 端口被占用”。启动新代理前先清干净。
+    pkill -f "mcp-server.py.*--config ${CONFIG_FILE}" 2>/dev/null || true
 }
 
 start_proxy() {
@@ -77,6 +242,7 @@ start_proxy() {
 
     rm -f "$GATEWAY_SOCK"
     read_qbt_port
+    kill_orphan_mcps
 
     if [ ! -f "$PROXY_SCRIPT" ]; then
         echo "Warning: proxy script not found at $PROXY_SCRIPT, gateway proxy unavailable"
@@ -88,9 +254,10 @@ start_proxy() {
     PROXY_PID=$!
     echo $PROXY_PID > "$PROXY_PID_FILE"
 
-    # 短时等待 socket 就绪（最长 0.5s）
+    # 等待 socket 就绪（最长 3s）：代理启动时要做版本探测等初始化，
+    # 0.5s 不够，历史上会稳定刷出“proxy failed to start”的假告警
     local wait=0
-    while [ $wait -lt 5 ] && ! [ -S "$GATEWAY_SOCK" ]; do
+    while [ $wait -lt 30 ] && ! [ -S "$GATEWAY_SOCK" ]; do
         sleep 0.1
         wait=$((wait + 1))
     done
@@ -168,7 +335,12 @@ start)
     # 读取配置文件中的 WebUI 端口：用户可能在 WebUI 中修改过端口，
     # 若仍用默认 8080 启动会覆盖用户设置，导致端口配置丢失
     read_qbt_port
+    normalize_config_port
+    read_qbt_address
     mkdir -p "$(dirname "$PID_FILE")" "${DATA_DIR}/qBittorrent/config" "$(dirname "$LOG_FILE")"
+
+    # 目录默认 ACL 缺失/损坏会让 qBittorrent 写出的文件自己都读不了，先修一遍
+    repair_profile_acls
 
     rotate_logs
 
@@ -241,6 +413,28 @@ EOF
 
     export QT_QPA_PLATFORM=offscreen
 
+    # 启动前确认端口可用：配置文件里的端口可能已被其他应用/容器占用。
+    # 顺延到可用端口并写回配置，代理随后会从配置里读到同一个端口，
+    # 这样“端口被别人占了”就不会再变成“应用启动失败”。
+    AVAILABLE_PORT=$(resolve_webui_port "$WEBUI_PORT" 2>/dev/null) || AVAILABLE_PORT=""
+    if [ -z "$AVAILABLE_PORT" ]; then
+        echo "错误：端口 ${WEBUI_PORT}-$((WEBUI_PORT + WEBUI_PORT_SCAN)) 均被占用，无法启动" > "$TRIM_TEMP_LOGFILE"
+        exit 1
+    fi
+    if [ "$AVAILABLE_PORT" != "$WEBUI_PORT" ]; then
+        PORT_OWNER=$(ss -ltn 2>/dev/null | grep -E ":${WEBUI_PORT}[[:space:]]" | head -1 | tr -s ' ')
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - WebUI 端口 ${WEBUI_PORT} 已被占用，自动改用 ${AVAILABLE_PORT}${PORT_OWNER:+（占用项：${PORT_OWNER}）}" >> "$LOG_FILE"
+        echo "WebUI 端口 ${WEBUI_PORT} 已被其他程序占用，已自动改用 ${AVAILABLE_PORT}"
+        WEBUI_PORT="$AVAILABLE_PORT"
+        set_config_port "$WEBUI_PORT"
+    fi
+
+    # 残留实例锁会让 qBittorrent 启动后立即静默退出（详见 clean_stale_lockfile）
+    clean_stale_lockfile
+
+    # 记录启动前的日志长度，失败时只分析本次新增的日志
+    LOG_OFFSET=$(stat -c%s "$LOG_FILE" 2>/dev/null || stat -f%z "$LOG_FILE" 2>/dev/null || echo 0)
+
     echo "Starting qBittorrent..."
     "$BIN_DIR/qbittorrent-nox" \
         --confirm-legal-notice \
@@ -256,14 +450,15 @@ EOF
     # 直接同步调用，避免子 shell 使 gateway-proxy.py 脱离管理、残留孤儿进程
     start_proxy
 
-    # 短等待后检测进程是否存活（最长 3s，按 0.2s 间隔检测）
+    # 短等待后检测进程是否存活（最长 3s，按 0.1s 间隔检测）
     elapsed=0
     while [ $elapsed -lt 30 ]; do
         if ! ps -p "$PID" > /dev/null 2>&1; then
             break
         fi
-        # 存活超过 0.6s 即可认为启动成功，提前跳出
-        if [ $elapsed -ge 6 ]; then
+        # 存活超过 2s 即可认为启动成功：qBittorrent 因残留锁/配置异常退出
+        # 大约发生在启动后 1s 左右，窗口太短会把“秒退”误判成启动成功
+        if [ $elapsed -ge 20 ]; then
             break
         fi
         sleep 0.1
@@ -271,17 +466,23 @@ EOF
     done
 
     if ! ps -p "$PID" > /dev/null 2>&1; then
+        # 只看本次启动新写入的日志，避免历史记录里的旧报错误判为本次失败原因
+        NEW_LOG=""
         if [ -f "$LOG_FILE" ]; then
-            if grep -qi "port.*already\|bind.*failed\|address.*in.*use" "$LOG_FILE" 2>/dev/null; then
-                echo "错误：端口 ${WEBUI_PORT} 被其他程序占用" > "$TRIM_TEMP_LOGFILE"
-                rm -f "$PID_FILE"
-                exit 1
-            fi
+            NEW_LOG=$(tail -c "+$((LOG_OFFSET + 1))" "$LOG_FILE" 2>/dev/null)
         fi
-        echo "错误：${APP_NAME} 启动失败" > "$TRIM_TEMP_LOGFILE"
-        if [ -f "$LOG_FILE" ]; then
-            tail -20 "$LOG_FILE" >> "$TRIM_TEMP_LOGFILE"
+        # 只有端口确实不可绑定时才归因为“端口被占用”。
+        # 日志里别处的 bind 失败（例如 MCP 自己的 8082）不能算到 WebUI 端口头上，
+        # 历史上正是这种全局 grep 把“残留实例锁导致秒退”误报成“8080 被占用”。
+        if ! port_available "$WEBUI_ADDRESS" "$WEBUI_PORT"; then
+            echo "错误：端口 ${WEBUI_PORT} 被其他程序占用" > "$TRIM_TEMP_LOGFILE"
+            ss -ltn 2>/dev/null | grep -E ":${WEBUI_PORT}[[:space:]]" | tr -s ' ' >> "$TRIM_TEMP_LOGFILE"
+        elif printf '%s\n' "$NEW_LOG" | grep -qi "lockfile\|another instance\|already running"; then
+            echo "错误：${APP_NAME} 启动失败：实例锁（${LOCK_FILE}）异常，清理后仍无法启动" > "$TRIM_TEMP_LOGFILE"
+        else
+            echo "错误：${APP_NAME} 启动失败" > "$TRIM_TEMP_LOGFILE"
         fi
+        printf '%s\n' "$NEW_LOG" | tail -20 >> "$TRIM_TEMP_LOGFILE"
         rm -f "$PID_FILE"
         exit 1
     fi
