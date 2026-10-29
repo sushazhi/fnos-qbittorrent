@@ -9,10 +9,12 @@ build.py - 统一的 fnOS 应用打包脚本（跨平台，替代 build.ps1 / bu
     - 自动检测操作系统 (Windows/Linux)，选择对应的 fnpack 构建工具
     - 参数与 build.ps1 / build.sh 兼容
     - 复用 .local-build 缓存，避免重复下载
+    - 下载产物按类型校验（ELF 魔数 + 架构 / zip CRC / 可选 sha256），校验不过即构建失败
     - 使用内置 zipfile 解压，无需外部 unzip
 """
 import argparse
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -22,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -54,6 +57,38 @@ GITHUB_PROXIES = [
 
 QBT_API = "https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases"
 VUE_API = "https://api.github.com/repos/VueTorrent/VueTorrent/releases/latest"
+
+# ---------------------------------------------------------------------------
+# 下载校验
+#
+# 为什么要有：这里的二进制/压缩包全部经 gh-proxy 等第三方代理下载，代理失败时
+# 常返回 200 + HTML 错误页或空内容。以前只判「读到的内容非空」就写盘、写
+# versions.json 并打进 fpk，等于把一页 HTML 当成 qbittorrent-nox 发布出去。
+# 现在改为「先写临时文件 -> 按类型校验 -> 通过才原子替换到正式位置并记版本」，
+# 校验不通过一律不落盘、不写 versions.json，并让本次构建失败（fail closed）。
+#
+# 可选的内容哈希：环境变量 QBT_NOX_SHA256 / VUETORRENT_SHA256 / FNPACK_SHA256
+# （qBittorrent-nox 另有按架构的 QBT_NOX_SHA256_ARM64 / QBT_NOX_SHA256_AMD64，
+# 因为两个架构的二进制不同，一个哈希覆盖不了）。给了哈希就必须一致，
+# 否则立即失败——这是唯一能防住「代理换了一份合法但错误的二进制」的手段，
+# 魔数校验做不到。
+# ---------------------------------------------------------------------------
+QBT_NOX_SHA256 = os.environ.get("QBT_NOX_SHA256", "").strip().lower()
+QBT_NOX_SHA256_ARM64 = os.environ.get("QBT_NOX_SHA256_ARM64", "").strip().lower()
+QBT_NOX_SHA256_AMD64 = os.environ.get("QBT_NOX_SHA256_AMD64", "").strip().lower()
+VUETORRENT_SHA256 = os.environ.get("VUETORRENT_SHA256", "").strip().lower()
+FNPACK_SHA256 = os.environ.get("FNPACK_SHA256", "").strip().lower()
+
+# ELF e_machine 取值（见 elf.h）：EM_AARCH64=183，EM_X86_64=62
+ELF_MACHINE = {"arm64": 183, "amd64": 62}
+
+# 每次构建前必须清空的目录：它们的内容 100% 由仓库生成。
+# 以前只做 makedirs + copytree(dirs_exist_ok=True)，从仓库删掉的文件会永久
+# 留在 .local-build 里被打进 fpk——本地产物会悄悄和仓库不一致，且这种差异
+# 在 git diff 里看不出来。下载缓存（qbittorrent-nox-*、fnpack-*、
+# vuetorrent.zip、versions.json）都在 BUILD_DIR 根下，不在下列目录内，
+# 因此只清这几个目录即可，绝不能整删 .local-build（那样每次构建都要重下 70MB）。
+CLEAN_DIRS = ["app", "cmd", "config", "wizard"]
 
 
 def log(msg, color="cyan"):
@@ -125,13 +160,170 @@ def version_match(component, expected):
     return load_versions().get(component) == expected
 
 
-def download(url, out_file, description, component, version, force, use_proxy=True):
-    """带缓存的下载：命中缓存直接返回，否则按代理顺序尝试。"""
-    if not force and os.path.exists(out_file) and os.path.getsize(out_file) > 0:
-        if version_match(component, version):
+def qbt_sha256_for(arch):
+    """qBittorrent-nox 按架构取哈希：arm64/amd64 的二进制不同，共用一个哈希没意义。"""
+    per_arch = QBT_NOX_SHA256_ARM64 if arch == "arm64" else QBT_NOX_SHA256_AMD64
+    return per_arch or QBT_NOX_SHA256
+
+
+def sha256_of(path):
+    """流式计算 sha256，避免把 70MB 二进制整个读进内存。"""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _remove_quiet(path):
+    """删临时文件：失败不重要（下次会被覆盖），不要因此打断下载重试。"""
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _verify_elf(path, expect_arch=None):
+    """校验 ELF 魔数 + 位宽 + 架构（e_machine）。通过返回 None，失败返回原因。"""
+    size = os.path.getsize(path)
+    if size < 64:
+        return f"文件只有 {size} 字节，不可能是静态 ELF 可执行文件"
+    with open(path, "rb") as f:
+        head = f.read(64)
+    if head[:4] != b"\x7fELF":
+        return f"缺少 ELF 魔数（前 4 字节 {head[:4]!r}，通常是代理返回的 HTML 错误页）"
+    ei_class, ei_data = head[4], head[5]  # EI_CLASS: 1=32 位 2=64 位；EI_DATA: 1=小端 2=大端
+    if ei_class not in (1, 2):
+        return f"ELF 位宽字段非法（EI_CLASS={ei_class}）"
+    if ei_data not in (1, 2):
+        return f"ELF 字节序字段非法（EI_DATA={ei_data}）"
+    # e_machine 在 ELF64/ELF32 头里都位于偏移 0x12，2 字节
+    e_machine = int.from_bytes(head[18:20], "little" if ei_data == 1 else "big")
+    if expect_arch:
+        want = ELF_MACHINE[expect_arch]
+        if e_machine != want:
+            return (f"ELF 架构不匹配：e_machine={e_machine}，"
+                    f"期望 {expect_arch}（e_machine={want}）")
+    return None
+
+
+def _verify_zip(path):
+    """校验 zip 魔数 + 逐文件 CRC（testzip）。通过返回 None，失败返回原因。"""
+    with open(path, "rb") as f:
+        magic = f.read(4)
+    if magic != b"PK\x03\x04":
+        return f"缺少 zip 魔数（前 4 字节 {magic!r}，通常是代理返回的 HTML 错误页）"
+    try:
+        with zipfile.ZipFile(path) as z:
+            # testzip() 返回第一个损坏文件的名字，全部正常返回 None
+            bad = z.testzip()
+    except zipfile.BadZipFile as e:
+        return f"zip 结构损坏：{e}"
+    except Exception as e:  # 代理截断等异常形态统一按校验失败处理
+        return f"zip 校验异常：{e}"
+    if bad:
+        return f"zip 内文件 CRC 校验失败：{bad}"
+    return None
+
+
+def _verify_text(path):
+    """校验纯文本（VueTorrent LICENSE）。
+
+    这一项只挡「明显不是文本」的情况：代理的错误页通常是 HTML，会在这里被拦下；
+    真正的许可证文本（ASCII/UTF-8）通过。故意不做长度/关键词匹配，
+    因为许可证正文随上游版本变化，硬编码关键词迟早误杀。
+    """
+    with open(path, "rb") as f:
+        head = f.read(256 * 1024)
+    if not head.strip():
+        return "内容为空"
+    low = head.lstrip()[:64].lower()
+    if low.startswith(b"<!doctype") or low.startswith(b"<html"):
+        return "内容是 HTML 页面，不是许可证文本"
+    try:
+        head.decode("utf-8")
+    except UnicodeDecodeError:
+        return "内容不是 UTF-8 文本"
+    return None
+
+
+# 类型 -> 校验器。raw 表示不校验内容（保留给未来可能的其它下载）
+_VERIFIERS = {"elf": _verify_elf, "zip": _verify_zip, "text": _verify_text}
+
+
+def verify_file(path, kind, expect_arch=None, expect_sha256=""):
+    """按类型校验本地文件。通过返回 None，失败返回中文原因。
+
+    返回字符串而不是抛异常：download() 需要据此「换下一个代理重试」，
+    异常会把重试循环打断。
+    """
+    if not os.path.exists(path):
+        return "文件不存在"
+    size = os.path.getsize(path)
+    if size <= 0:
+        return "文件为空（0 字节）"
+    # 哈希放在类型校验之前：sha256 不符说明内容根本不是这份东西，
+    # 再讨论魔数没有意义。
+    if expect_sha256:
+        got = sha256_of(path)
+        if got != expect_sha256.strip().lower():
+            return f"sha256 不匹配：期望 {expect_sha256}，实际 {got}"
+    verifier = _VERIFIERS.get(kind)
+    if verifier is None:
+        return None
+    if kind == "elf":
+        return verifier(path, expect_arch)
+    return verifier(path)
+
+
+def probe_elf_version(path, target_arch, expected_version):
+    """尽力而为地跑一次 `--version`，比魔数更硬的证据。通过返回 None。
+
+    只在「构建机架构 == 目标架构」且 POSIX 上尝试：跨架构跑不了（会 exec 失败），
+    Windows 上也没有这个语义。
+    跑不起来（缺 glibc、被沙箱拦住、返回码非 0）只告警不失败——魔数 + 架构已经
+    能排除代理错误页，不能因为开发机环境差异让构建失败。
+    但如果真的跑起来了、输出了版本号且与期望不符，则判定失败：那说明下到的是
+    另一份「合法但错误」的二进制，魔数校验发现不了。
+    """
+    if os.name != "posix" or target_arch != get_platform_arch():
+        log("    (目标架构与构建机不同，跳过 --version 探测)", "gray")
+        return None
+    try:
+        proc = subprocess.run([path, "--version"], capture_output=True, timeout=60)
+    except Exception as e:
+        log(f"    (无法执行 --version：{e}；已通过 ELF 魔数与架构校验)", "yellow")
+        return None
+    out = (proc.stdout or b"").decode("utf-8", "replace")
+    out += (proc.stderr or b"").decode("utf-8", "replace")
+    out = out.strip()
+    if proc.returncode != 0 or not out:
+        log("    (--version 无有效输出；已通过 ELF 魔数与架构校验)", "yellow")
+        return None
+    first = out.splitlines()[0].strip()
+    log(f"    --version -> {first}", "green")
+    if expected_version:
+        # 按「完整版本片段」匹配，避免 5.2.4 命中 5.2.40
+        if not re.search(r"(?<![\d.])%s(?![\d.])" % re.escape(expected_version), out):
+            return f"--version 输出与期望版本 {expected_version} 不一致（{first}）"
+    return None
+
+
+def download(url, out_file, description, component, version, force, use_proxy=True,
+             kind="elf", expect_arch=None, expect_sha256="", probe_version=""):
+    """带缓存 + 内容校验的下载。
+
+    命中缓存也要校验（魔数/CRC，给了哈希再校验哈希），因为缓存自己也可能被
+    之前版本的脚本写坏；校验不过就当作未命中重新下载。
+    """
+    tmp_file = out_file + ".part"
+
+    if not force and os.path.exists(out_file) and version_match(component, version):
+        err = verify_file(out_file, kind, expect_arch, expect_sha256)
+        if err is None:
             log(f"  Using cached {description} (version {version})", "green")
             return True
-        log(f"  Version mismatch for {description}, re-downloading...", "yellow")
+        log(f"  Cached {description} 校验失败（{err}），重新下载...", "yellow")
 
     log(f"  Downloading {description}...", "yellow")
 
@@ -144,24 +336,41 @@ def download(url, out_file, description, component, version, force, use_proxy=Tr
         url_list = [url]
 
     last_err = ""
-    for i, u in enumerate(url_list):
+    for u in url_list:
         try:
             log(f"    Trying {u[:60]}...", "gray")
             req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=300) as resp:
                 data = resp.read()
-            # 部分代理在失败时会返回 200 + 错误页/空内容，按大小兜底判断，
-            # 避免把一页 HTML 当成二进制写进缓存。
+            # 部分代理在失败时会返回 200 + 错误页/空内容。这里一律先落临时文件，
+            # 校验通过后才原子替换到 out_file —— 坏内容永远不会出现在正式路径上，
+            # 也就不会被复用、不会被记进 versions.json、不会被打进 fpk。
             if not data:
-                last_err = "empty download"
+                last_err = "空内容（0 字节）"
                 continue
-            with open(out_file, "wb") as f:
+            with open(tmp_file, "wb") as f:
                 f.write(data)
+            if kind == "elf" and os.name == "posix":
+                # 探测 --version 需要可执行位；也顺带满足「下载后可执行」
+                os.chmod(tmp_file, 0o755)
+            err = verify_file(tmp_file, kind, expect_arch, expect_sha256)
+            if err is None and probe_version:
+                err = probe_elf_version(tmp_file, expect_arch or get_platform_arch(),
+                                        probe_version)
+            if err:
+                host = urllib.parse.urlsplit(u).netloc
+                last_err = f"{host} 返回的内容校验失败：{err}"
+                log(f"    {last_err}", "yellow")
+                _remove_quiet(tmp_file)
+                continue
+            os.replace(tmp_file, out_file)
             save_version(component, version)
             log(f"  Downloaded {description}", "green")
             return True
         except Exception as e:
             last_err = str(e)
+            _remove_quiet(tmp_file)
+    _remove_quiet(tmp_file)
     log(f"  ERROR: Failed to download {description}: {last_err}", "red")
     return False
 
@@ -182,6 +391,19 @@ def copy_tree(src, dst):
         else:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)
+
+
+def clean_build_dirs():
+    """构建前清空由仓库内容生成的目录（见 CLEAN_DIRS 的说明）。
+
+    只删 CLEAN_DIRS 里那几个目录本身，不碰 BUILD_DIR 根下的下载缓存；
+    目录不存在时跳过，因此可以重复执行（幂等）。
+    """
+    for d in CLEAN_DIRS:
+        p = os.path.join(BUILD_DIR, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+            log(f"  Cleaned stale {d}/", "gray")
 
 
 def read_manifest_version():
@@ -371,6 +593,8 @@ def main():
 
     # [1/5] 构建目录
     log("[1/5] Setting up build directory...", "yellow")
+    # 先清空再建：不清空的话，从仓库删掉的文件会永远留在产物里（详见 CLEAN_DIRS）
+    clean_build_dirs()
     for d in ["app/bin", "app/ui/vuetorrent", "cmd", "config", "wizard"]:
         os.makedirs(os.path.join(BUILD_DIR, d), exist_ok=True)
     log("  Build directory ready", "green")
@@ -404,9 +628,16 @@ def main():
     daemon_target = os.path.join(BUILD_DIR, "app", "bin", "qbittorrent-nox")
     qbt_url = f"https://github.com/userdocs/qbittorrent-nox-static/releases/download/{qbt_tag}/{binary_arch}-qbittorrent-nox"
     if not download(qbt_url, daemon_cache, f"qBittorrent-nox {qbt_tag} ({binary_arch})",
-                    f"qbittorrent-nox_{arch}", qbt_tag, force):
+                    f"qbittorrent-nox_{arch}", qbt_tag, force,
+                    kind="elf", expect_arch=arch,
+                    expect_sha256=qbt_sha256_for(arch), probe_version=qbt_ver):
+        log("  ERROR: qBittorrent-nox 下载/校验失败，构建中止"
+            "（不写缓存、不写 versions.json）", "red")
         sys.exit(1)
     shutil.copy2(daemon_cache, daemon_target)
+    if os.name == "posix":
+        # copy2 保留缓存文件的权限，这里再显式兜一次，避免缓存来自旧脚本时没有执行位
+        os.chmod(daemon_target, 0o755)
 
     # 复制 Python 脚本
     for script in ["gateway-proxy.py", "qbt_password.py", "mcp-server.py"]:
@@ -423,7 +654,9 @@ def main():
         log(f"  Using cached VueTorrent {vue_ver}", "green")
     else:
         vue_url = f"https://github.com/VueTorrent/VueTorrent/releases/download/v{vue_ver}/vuetorrent.zip"
-        if not download(vue_url, vue_cache, f"VueTorrent {vue_ver}", "vuetorrent", vue_ver, force):
+        if not download(vue_url, vue_cache, f"VueTorrent {vue_ver}", "vuetorrent", vue_ver, force,
+                        kind="zip", expect_sha256=VUETORRENT_SHA256):
+            log("  ERROR: VueTorrent 压缩包下载/校验失败（可能是代理返回的错误页），构建中止", "red")
             sys.exit(1)
         log("  Extracting VueTorrent...", "gray")
         extract_zip(vue_cache, os.path.join(BUILD_DIR, "temp-vuetorrent"))
@@ -437,7 +670,8 @@ def main():
         # 保留 VueTorrent 的 MIT 许可证文本（MIT 要求随分发保留版权与许可声明）
         vue_license_url = f"https://raw.githubusercontent.com/VueTorrent/VueTorrent/v{vue_ver}/LICENSE"
         if not download(vue_license_url, os.path.join(vue_target, "LICENSE"),
-                       f"VueTorrent LICENSE {vue_ver}", "vuetorrent-license", vue_ver, force):
+                       f"VueTorrent LICENSE {vue_ver}", "vuetorrent-license", vue_ver, force,
+                       kind="text"):
             log("  Warning: 未能下载 VueTorrent LICENSE，fpk 内可能缺少 MIT 声明", "yellow")
         log("  VueTorrent ready", "green")
 
@@ -457,11 +691,14 @@ def main():
     fnpack_url = get_fnpack_url(arch)
     fnpack_name = fnpack_url.rsplit("/", 1)[-1]
     fnpack_path = os.path.join(BUILD_DIR, fnpack_name)
-    if not force and os.path.exists(fnpack_path) and os.path.getsize(fnpack_path) > 0 and version_match("fnpack", FNPACK_VER):
-        log(f"  Using cached fnpack {FNPACK_VER}", "green")
-    else:
-        if not download(fnpack_url, fnpack_path, "fnpack", "fnpack", FNPACK_VER, force, use_proxy=False):
-            sys.exit(1)
+    # 缓存判定和校验统一交给 download()：以前这里单独判「文件存在且大小非零」，
+    # 缓存里一个被代理写入的 HTML 文件能一路走到 fnpack build 才炸。
+    # 注意 fnpack 不校验架构字节：Linux arm64 构建机用的官方包是 32 位 linux-arm，
+    # e_machine 与构建机不同，只校验 ELF 魔数（+ 可选 sha256）。
+    if not download(fnpack_url, fnpack_path, "fnpack", "fnpack", FNPACK_VER, force,
+                    use_proxy=False, kind="elf", expect_sha256=FNPACK_SHA256):
+        log("  ERROR: fnpack 下载/校验失败，构建中止", "red")
+        sys.exit(1)
 
     if get_platform() == "windows":
         os.chmod(fnpack_path, 0o755) if os.name == "posix" else None

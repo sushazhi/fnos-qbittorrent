@@ -24,9 +24,11 @@ on:
         type: boolean
         default: false
 
+# 工作流级只给读权限，写权限在 sync 作业内单独声明（见该作业）。
+# 这样以后往本工作流里加任何别的作业（PR 检查、临时诊断）都不会默默继承
+# 可推提交、可发 Release 的 token。
 permissions:
-  contents: write   # 提交 manifest、推送 tag
-  actions: write    # gh workflow run 触发 Build and Release
+  contents: read
 
 concurrency:
   group: monthly-upstream-sync
@@ -40,6 +42,9 @@ jobs:
     name: Check upstream & sync manifest
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write   # 提交 manifest、推送 tag
+      actions: write    # gh workflow run 触发 Build and Release
 
     steps:
       # ------------------------------------------------------------------
@@ -334,19 +339,32 @@ jobs:
             echo "::warning::上游 tag（${UPSTREAM_TAG:-未知} / qBittorrent ${UPSTREAM_QBT:-未知}）与目标版本 ${TARGET_QBT} 不一致，交由构建侧自行匹配"
           fi
 
-          if [ -n "${QBT_TAG}" ]; then
-            # 补发时 --ref 指向的是历史 tag，其 workflow 文件可能尚未声明该输入，
+          # 同时固定本次构建用的 VueTorrent 版本：build-and-release 的默认值是
+          # latest，而 latest 随时间漂移——同一个 tag 隔几天重建会得到不同的 WebUI。
+          # 这里把当前上游 release tag 显式传下去，让构建输入与发布记录对得上。
+          # 解析失败只告警，由构建侧按 latest 处理（不阻断发布）。
+          VUE_TAG="$(gh api repos/VueTorrent/VueTorrent/releases/latest --jq .tag_name 2>/dev/null | tr -d ' \r\n' || true)"
+          VUE_TAG="${VUE_TAG#v}"
+          if [ -z "${VUE_TAG}" ]; then
+            echo "::warning::未能解析 VueTorrent 最新版本，构建侧将按 latest 处理"
+          else
+            echo "固定 VueTorrent 版本：${VUE_TAG}"
+          fi
+
+          # 组装 dispatch 输入；一个都没有时按无输入触发（构建侧自行匹配）
+          INPUTS=()
+          if [ -n "${QBT_TAG}" ]; then INPUTS+=(-f "qbt_release_tag=${QBT_TAG}"); fi
+          if [ -n "${VUE_TAG}" ]; then INPUTS+=(-f "vuetorrent_version=${VUE_TAG}"); fi
+
+          if [ ${#INPUTS[@]} -eq 0 ]; then
+            gh workflow run build-and-release.yml --ref "${TAG}"
+          elif ! gh workflow run build-and-release.yml --ref "${TAG}" "${INPUTS[@]}"; then
+            # 补发时 --ref 指向的是历史 tag，其 workflow 文件可能尚未声明这些输入，
             # 此时 GitHub 会以 422 拒绝；回退为不带输入触发（构建侧自行匹配）。
             # 这里只兜住「dispatch 请求被拒绝」，不会造成重复构建。
-            if ! gh workflow run build-and-release.yml \
-                   --ref "${TAG}" \
-                   -f "qbt_release_tag=${QBT_TAG}"; then
-              echo "::warning::带 qbt_release_tag 触发被拒绝（该 tag 的 workflow 可能未声明此输入），回退为自动匹配"
-              gh workflow run build-and-release.yml --ref "${TAG}"
-            fi
-          else
+            echo "::warning::带输入触发被拒绝（该 tag 的 workflow 可能未声明这些输入），回退为自动匹配"
             gh workflow run build-and-release.yml --ref "${TAG}"
           fi
 
-          echo "已触发 Build and Release（ref=${TAG}, qbt_release_tag=${QBT_TAG:-自动匹配}）"
+          echo "已触发 Build and Release（ref=${TAG}, qbt_release_tag=${QBT_TAG:-自动匹配}, vuetorrent_version=${VUE_TAG:-latest}）"
           echo "构建完成后会自动创建 GitHub Release：${TAG}"
