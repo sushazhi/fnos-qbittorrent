@@ -17,7 +17,9 @@ fnOS 统一网关反向代理 — qBittorrent WebUI 代理
   - 线程池限制最大并发数
 """
 
+import hmac
 import http.server
+import secrets
 import socket
 import sys
 import os
@@ -414,6 +416,17 @@ def _get_sys_lang_script():
 #   - 250ms 内应用已挂载则不出现（正常热缓存打开无闪烁）
 #   - MutationObserver 监听 #app 子节点，Vue 一挂载立即淡出移除
 #   - 15s / 45s 递进提示，把"白屏"变成可解释的加载状态
+# 代理自有 /api 端点的调用凭证：每次进程启动随机生成，
+# 通过注入页面下发（见 _api_token_tag）。作用是挡住跨站请求——
+# 攻击者能发 POST，但读不到页面里的 token，从而无法伪造 CSRF。
+_API_TOKEN = secrets.token_urlsafe(24)
+
+
+def _api_token_tag():
+    """注入到 HTML 的 token 引导脚本（不可缓存，随页面一起下发）。"""
+    return ('<script>window.__qbtToken=%s;</script>' % json.dumps(_API_TOKEN)).encode()
+
+
 _BOOT_PLACEHOLDER = (
     '<div id="qb-boot" style="position:fixed;left:0;top:0;right:0;bottom:0;'
     'z-index:2147483000;display:flex;align-items:center;justify-content:center;'
@@ -697,6 +710,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     '}catch(e){}'
     ''
     '/* ===== 1.5 全局 toast（选目录提示用，页面自动刷新后复用） ===== */'
+    'window.__qbH=function(o){o=o||{};o.headers=Object.assign({"X-Qbt-Token":window.__qbtToken||""},o.headers||{});return o;};'
     'window.__qbToast=function(t,m){'
       'var colors={success:"#22c55e",error:"#ef4444",warning:"#f59e0b",info:"#3b82f6"};'
       'var icons={success:"✓",error:"✕",warning:"!",info:"ℹ"};'
@@ -743,7 +757,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     '}catch(e){}'
     ''
     '/* ===== 2. 获取下载路径 ===== */'
-    'fetch(P+"/api/download-path").then(function(r){return r.json();}).then(function(d){'
+    'fetch(P+"/api/download-path",window.__qbH()).then(function(r){return r.json();}).then(function(d){'
       'if(d.success&&d.path){'
         '_dlPath=d.path;'
         '_dlPathDisplay=d.displayPath||d.path;'
@@ -798,7 +812,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     '}'
     'function __qbMcpPanel(){'
     '__qbMcpEnsureStyle();'
-    'fetch(P+"/api/mcp/config").then(function(r){return r.json();}).then(function(cfg){'
+    'fetch(P+"/api/mcp/config",window.__qbH()).then(function(r){return r.json();}).then(function(cfg){'
     'if(!cfg||!cfg.success){window.__qbToast("error","读取 MCP 配置失败");return;}'
     'var old=document.getElementById("__qbMcpOv");if(old)old.remove();'
     'var ov=document.createElement("div");'
@@ -857,7 +871,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     'rot.textContent="重新生成";rot.className="qbGBtn";'
     'rot.onclick=function(){'
     'window.__qbToast("info","正在重新生成 Key...");'
-    'fetch(P+"/api/mcp/key/rotate",{method:"POST"}).then(function(r){return r.json();}).then(function(r2){'
+    'fetch(P+"/api/mcp/key/rotate",window.__qbH({method:"POST"})).then(function(r){return r.json();}).then(function(r2){'
     'if(r2.success){kin.value=r2.apiKey;window.__qbToast("success","已生成新 Key，旧 Key 立即失效");}'
     'else{window.__qbToast("error","生成失败: "+(r2.error||"未知错误"));}})'
     '.catch(function(){window.__qbToast("error","生成失败，网络错误");});'
@@ -894,7 +908,7 @@ _INJECT_SCRIPT_TEMPLATE = (
     'save.onclick=function(){'
     'var pt=parseInt(pin.value,10);'
     'if(!(pt>1023&&pt<65536)){window.__qbToast("error","端口需在 1024-65535 之间");return;}'
-    'fetch(P+"/api/mcp/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:cb.checked,port:pt,allowDangerous:cb2.checked})})'
+    'fetch(P+"/api/mcp/config",window.__qbH({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:cb.checked,port:pt,allowDangerous:cb2.checked})}))'
     '.then(function(r){return r.json();}).then(function(r2){'
     'if(r2.success){window.__qbToast("success","MCP 配置已保存并生效");ov.remove();}'
     'else{window.__qbToast("error","保存失败: "+(r2.error||"未知错误"));}})'
@@ -937,7 +951,7 @@ _INJECT_SCRIPT_TEMPLATE = (
         'else if(res&&res.data){p=Array.isArray(res.data)?res.data[0]:res.data;}'
         'else if(res&&res.paths&&res.paths.length){p=res.paths[0];}'
         'if(!p){notify("warning","未选择目录");return;}'
-        'fetch(P+"/api/set-save-path",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})}).then(function(r){return r.json();}).then(function(r2){'
+        'fetch(P+"/api/set-save-path",window.__qbH({method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({path:p})})).then(function(r){return r.json();}).then(function(r2){'
           'if(r2.success){'
             'if(r2.applied){'
               'notify("success","下载目录已设置为: "+p);'
@@ -965,7 +979,7 @@ _INJECT_SCRIPT_TEMPLATE = (
      'f.innerHTML=\'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/></svg>\';'
      'f.onclick=function(e){e.stopPropagation();'
        'var P="' + PREFIX + '";'
-       'fetch(P+"/api/download-path").then(function(r){return r.json();}).then(function(d){'
+       'fetch(P+"/api/download-path",window.__qbH()).then(function(r){return r.json();}).then(function(d){'
          'if(d.success&&d.path){'
            '/* 通过 Penpal 桥接调用 fnOS 宿主 openFileManager，传真实内部路径 */'
            'sdk.openFileManager(d.path).catch(function(){'
@@ -1091,20 +1105,28 @@ class ConnectionPool:
         self._pool = _q.Queue(maxsize)
 
     def acquire(self):
-        """从池中取一个连接，没有则新建。"""
+        """从池中取一个连接，没有则新建。
+
+        端口切换后池里的旧连接必须作废：qBittorrent 里用户可能刚改过端口，
+        旧连接指向的老端口即便还能连上，请求也会打到"另一个服务"上。
+        """
         _q = _get_queue()
-        try:
-            conn = self._pool.get_nowait()
-            if conn.sock is not None:
+        while True:
+            try:
+                conn = self._pool.get_nowait()
+            except _q.Empty:
+                break
+            stale = getattr(conn, "_qbt_port", None) not in (None, self._port)
+            if not stale and conn.sock is not None:
                 try:
                     conn.sock.getpeername()
                     return conn
                 except (OSError, AttributeError):
                     pass
             conn.close()
-        except _q.Empty:
-            pass
-        return HTTPConnection(self._host, self._port, timeout=self._timeout)
+        fresh = HTTPConnection(self._host, self._port, timeout=self._timeout)
+        fresh._qbt_port = self._port
+        return fresh
 
     def release(self, conn):
         """归还连接，池满则关闭。"""
@@ -1354,6 +1376,10 @@ def _read_mcp_conf():
 
 def _write_mcp_conf(enabled, port, allow_dangerous=False):
     conf = _mcp_conf_file()
+    if not conf:
+        # CONFIG_PATH 未知（代理未按约定参数启动）时，os.path.dirname(None) 会抛异常，
+        # 调用方拿不到响应；这里显式报错，让接口能返回可读信息
+        raise RuntimeError("配置文件路径未知，无法写入 MCP 配置")
     os.makedirs(os.path.dirname(conf), exist_ok=True)
     with open(conf, "w") as f:
         f.write("MCP_ENABLED=%s\nMCP_PORT=%d\nMCP_ALLOW_DANGEROUS=%s\n" % (
@@ -1363,13 +1389,22 @@ def _write_mcp_conf(enabled, port, allow_dangerous=False):
 
 def _kill_mcp_proc():
     global _mcp_proc
-    if _mcp_proc and _mcp_proc.poll() is None:
-        try:
-            _mcp_proc.terminate()
-            logging.info("mcp server terminated (pid %s)", _mcp_proc.pid)
-        except Exception:
-            pass
+    proc = _mcp_proc
     _mcp_proc = None
+    if not proc or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        # 必须 wait：不回收就会留下僵尸进程，且旧进程可能还占着端口，
+        # 紧接着的新实例 Popen 会 EADDRINUSE
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+            proc.wait(timeout=5)
+        logging.info("mcp server terminated (pid %s)", proc.pid)
+    except Exception:
+        pass
 
 
 def _ensure_mcp_proc():
@@ -1519,9 +1554,9 @@ def rewrite_html(data):
     # 首屏加载占位（详见 _BOOT_PLACEHOLDER 注释）：远程链路首次打开时
     # index.html 只有空的 <div id="app">，不注入占位就是长时间白屏
     if b'</body>' in data:
-        data = data.replace(b'</body>', _BOOT_PLACEHOLDER + b'</body>', 1)
+        data = data.replace(b'</body>', _api_token_tag() + _BOOT_PLACEHOLDER + b'</body>', 1)
     else:
-        data += _BOOT_PLACEHOLDER
+        data += _api_token_tag() + _BOOT_PLACEHOLDER
     return data
 
 
@@ -1650,14 +1685,49 @@ def _get_current_version():
 
 
 def _validate_fpk(path):
+    """校验 fpk 更新包。
+
+    只比对魔数不够：代理错误页/镜像返回的 HTML 可能被截断成看似合法的头，
+    或者压缩包本身损坏。这里真正打开一次并确认包含 manifest（fnOS 包必需），
+    失败就 fail closed，不交给安装器。
+    """
     try:
         with open(path, 'rb') as f:
             head = f.read(4)
-        if head[:2] == b'\x1f\x8b' or head == b'PK\x03\x04':
+        if head[:2] == b'\x1f\x8b':
+            import tarfile
+            with tarfile.open(path, 'r:gz') as tf:
+                names = {n.split('/')[-1] for n in tf.getnames()[:5000]}
+            if "manifest" not in names:
+                return False, "压缩包内缺少 manifest，可能不是有效的 fpk"
+            return True, ""
+        if head == b'PK\x03\x04':
+            import zipfile
+            with zipfile.ZipFile(path) as zf:
+                if zf.testzip() is not None:
+                    return False, "压缩包校验失败（内容损坏）"
+                names = {n.split('/')[-1] for n in zf.namelist()}
+            if "manifest" not in names:
+                return False, "压缩包内缺少 manifest，可能不是有效的 fpk"
             return True, ""
         return False, "内容异常 (%r)" % (head,)
     except Exception as e:
-        return False, str(e)
+        return False, "无法解析更新包: %s" % e
+
+
+def _update_tmp_dir():
+    """更新包落盘目录：优先放在应用数据目录下的私有子目录。
+
+    原先写死 /tmp/qbittorrent-update.fpk：多进程/多次点击会互相覆盖，
+    且 /tmp 是所有人可写的，存在把别人准备好的文件当更新包安装的竞态。
+    """
+    base = os.path.dirname(CONFIG_PATH) if CONFIG_PATH else "/tmp"
+    path = os.path.join(base, ".update")
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+    except OSError:
+        path = "/tmp"
+    return path
 
 
 def _download_fpk(url, dest, status, max_size=FPK_MAX_SIZE,
@@ -1774,7 +1844,7 @@ def _perform_update(info):
             )
         _update_status["message"] = "正在准备更新..."
         _update_status["progress"] = 5
-        fpk_path = "/tmp/qbittorrent-update.fpk"
+        fpk_path = os.path.join(_update_tmp_dir(), "qbittorrent-update-%d.fpk" % os.getpid())
         # 直连优先、加速源兜底：直连能通时享受满速和原始文件；
         # 被墙时用 DIRECT_PROBE_TIMEOUT 短超时快速探测失败，
         # 只损失一次探测时间（而不是旧实现直连放最后、或直连放最前白等 120s）。
@@ -1922,7 +1992,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def _strip_prefix(self):
         path = self.path
         if path.startswith(PREFIX):
-            path = path[len(PREFIX):] or "/"
+            rest = path[len(PREFIX):]
+            # "/app/qbittorrent?x=1" 会剥成 "?x=1"：补回 "/" 再交给后端，
+            # 否则上游会收到一个以 ? 开头的畸形请求目标
+            path = rest if rest.startswith("/") else ("/" + rest if rest.startswith("?") else "/")
         return path
 
     def _validated_content_length(self, required=True):
@@ -1955,7 +2028,51 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _api_guard_ok(self):
+        """代理自有 /api 端点的来源校验。
+
+        这些端点不经过 qBittorrent 自己的鉴权（它们由代理直接处理，
+        其中 /api/mcp/config 还会下发 Web API Key），原先只靠"能连上
+        Unix socket"这一道门，任意同网段页面都能对其发起跨站请求。
+        校验两件事：
+          1. 浏览器声明的来源必须是同源（挡跨站表单/iframe）；
+          2. 必须带上页面里注入的 token（攻击者能发请求，但读不到 token）。
+        """
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return False
+        origin = (self.headers.get("Origin") or "").strip()
+        if origin:
+            host = (self.headers.get("Host") or "").split(":")[0]
+            m = _RE_REFERER.match(origin)
+            origin_host = m.group(0).split("//", 1)[-1].split(":")[0] if m else ""
+            if not host or origin_host != host:
+                return False
+        got = (self.headers.get("X-Qbt-Token") or "").strip()
+        return bool(got) and hmac.compare_digest(got, _API_TOKEN)
+
+    # 代理自己实现的端点；其余 /api/* 一律原样转发给 qBittorrent，
+    # 不能在这里做来源校验，否则 VueTorrent 自己的 API 调用全被挡掉
+    _OWNED_APIS = frozenset({
+        "/api/download-path", "/api/set-save-path",
+        "/api/mcp/config", "/api/mcp/key/rotate",
+        "/api/update/check", "/api/update/install",
+        "/api/update/status", "/api/update/download",
+    })
+    # 这些端点会自己把请求体读掉；其余 POST 端点不读 body 就直接回复
+    _BODY_CONSUMING_APIS = frozenset({"/api/set-save-path", "/api/mcp/config"})
+
     def _handle_api(self, path):
+        if path not in self._OWNED_APIS:
+            return False
+        if not self._api_guard_ok():
+            self.close_connection = True
+            self._send_json(403, {"success": False,
+                                  "error": "请求未通过来源校验，请刷新页面后重试"})
+            return True
+        if self.command == "POST" and path not in self._BODY_CONSUMING_APIS:
+            # 不读请求体的 POST 之后若继续复用连接，残留字节会被解析成下一个请求
+            self.close_connection = True
         if path == "/api/download-path":
             try:
                 save_path = ""
@@ -2158,7 +2275,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             return True
 
         if path == "/api/update/download":
-            fpk_path = "/tmp/qbittorrent-update.fpk"
+            fpk_path = os.path.join(_update_tmp_dir(), "qbittorrent-update-%d.fpk" % os.getpid())
             if not os.path.exists(fpk_path):
                 self._send_json(404, {"success": False, "error": "更新包不存在，请先点击一键更新"})
                 return True
@@ -2239,6 +2356,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         skip_headers = frozenset({
             "host", "connection", "transfer-encoding",
             "accept-encoding", "origin", "referer",
+            # date/server 由本进程自己发，转发上游的会变成两个同名响应头
+            "date", "server",
         })
         for key, value in self.headers.items():
             if key.lower() not in skip_headers:
@@ -2361,7 +2480,13 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             resp = conn.getresponse()
         except ConnectionError as e:
             # 连接池可能返回了 half-close 的失效连接（RemoteDisconnected）
-            # 用全新连接重试一次
+            # 用全新连接重试一次——但只对幂等方法：POST 重放会重复添加任务/重复改配置
+            if self.command not in ("GET", "HEAD", "OPTIONS"):
+                logging.warning("request failed on non-idempotent method, not retrying: %s %s -> %s",
+                                self.command, path, e)
+                conn.close()
+                self._send_json(502, {"success": False, "error": "后端连接中断，请重试"})
+                return
             logging.warning("request failed, retry with fresh connection: %s %s -> %s",
                            self.command, path, e)
             conn.close()
@@ -2439,11 +2564,19 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             if is_html:
                 data = resp.read()
                 body_done = True
+                still_encoded = ""
                 if content_encoding:
                     raw = decompress(data, content_encoding)
                     if raw is not None:
                         data = raw
-                data = rewrite_html(data)
+                    else:
+                        # 解压失败：body 仍是压缩态，头部必须补回去，
+                        # 否则浏览器会把压缩流当明文渲染（页面乱码）
+                        still_encoded = content_encoding
+                if not still_encoded:
+                    data = rewrite_html(data)
+                if still_encoded:
+                    self.send_header("Content-Encoding", still_encoded)
                 # 缓存首页 HTML（避免每次打开都重新从后端获取和重写）
                 if is_home and 200 <= resp.status < 300:
                     set_cached_html(html_key, data)
@@ -2661,6 +2794,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 # Unix socket 服务器（线程池版）
 # ---------------------------------------------------------------------------
 class ThreadedUnixHTTPServer(http.server.HTTPServer):
+    def handle_error(self, request, client_address):
+        """客户端断开/超时是常态，不打整段 traceback 污染日志。"""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError, TimeoutError)):
+            logging.info("client gone: %s -> %r", client_address[0] if client_address else "?", exc)
+            return
+        super().handle_error(request, client_address)
+
     address_family = socket.AF_UNIX
 
     def __init__(self, *args, **kwargs):

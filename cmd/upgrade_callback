@@ -18,6 +18,10 @@ MAIN_SCRIPT="${CMD_DIR}/main"
     exit 1
 }
 
+# 公共的 profile 权限 / 实例锁自愈逻辑（与 cmd/main 共用同一份实现）
+# shellcheck source=profile_acl.sh
+. "${CMD_DIR}/profile_acl.sh" 2>/dev/null || true
+
 QBT_LOCK_OWNER_TAG="upgrade_callback"
 
 # 备份在shares目录（多卷系统优先使用系统共享路径）
@@ -90,6 +94,22 @@ if [ "$BACKUP_EXISTS" = true ]; then
     # 删除备份
     rm -rf "$BACKUP_DIR"
     echo "备份已清理"
+fi
+
+# 权限自愈：cp -a 会把备份里的 ACL 一起搬回来，其中可能带有
+# default:user::---（此后新建的文件属主自己都读不了，典型受害文件是 lockfile，
+# 表现为升级后应用启动 1 秒静默退出）；上面的 chmod 只改经典权限位，
+# 动不了默认 ACL，所以必须显式修一次。
+if declare -F qbt_repair_profile_acls > /dev/null 2>&1; then
+    qbt_repair_profile_acls "$DATA_DIR"
+else
+    echo "警告：缺少 profile_acl.sh，跳过 ACL 修复" > "$TRIM_TEMP_LOGFILE"
+fi
+
+# 备份里带回来的 lockfile 记录的是升级前那个已被停掉的 PID，
+# 不清理会让 qBittorrent 认为已有实例在跑
+if declare -F qbt_clean_profile_lock > /dev/null 2>&1; then
+    qbt_clean_profile_lock "$DATA_DIR"
 fi
 
 # 确保配置存在（恢复后检查，无数据时创建默认配置）

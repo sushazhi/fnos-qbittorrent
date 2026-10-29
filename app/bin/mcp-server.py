@@ -227,8 +227,17 @@ def tool_add_torrent(args):
     if not urls:
         return _err("缺少参数 urls（磁力链接或 .torrent 的 HTTP(S) 地址，可多个）")
     body = {"urls": "\n".join(urls)}
-    if args.get("savepath"):
-        body["savepath"] = args["savepath"]
+    savepath = (args.get("savepath") or "").strip()
+    if savepath:
+        # 保存路径决定文件落盘位置，属于高危写入面：默认关闭，且必须是绝对路径
+        if not ALLOW_DANGEROUS:
+            return _err(
+                "指定 savepath 属于高危操作，当前已被管理员禁用。"
+                "请开启「允许高危操作」后重试，或省略 savepath 使用默认下载目录。"
+            )
+        if not savepath.startswith("/"):
+            return _err("savepath 必须是绝对路径")
+        body["savepath"] = savepath
     if args.get("category"):
         body["category"] = args["category"]
     if args.get("stopped"):
@@ -300,7 +309,9 @@ _BLOCKED_POST_ENDPOINTS = ("auth/", "app/rotateAPIKey", "app/setPreferences", "a
 _SAFE_POST_ENDPOINTS = frozenset({
     "torrents/add",
     "torrents/setCategory", "torrents/setTags", "torrents/addTags",
-    "torrents/removeTags", "torrents/rename", "torrents/setLocation",
+    "torrents/removeTags", "torrents/rename",
+    # 注意：torrents/setLocation 可以把任务数据搬到任意可写目录（配合 hashes=all
+    # 等于搬空整库），属于高危，必须由「允许高危操作」开关放行
     "torrents/setShareLimits", "torrents/setDownloadLimit",
     "torrents/setUploadLimit", "torrents/setSuperSeeding",
     "torrents/reannounce", "torrents/recheck",
@@ -308,8 +319,10 @@ _SAFE_POST_ENDPOINTS = frozenset({
     "torrents/decreasePrio", "torrents/filePrio",
     "transfer/setSpeedLimitsMode", "transfer/setDownloadLimit",
     "transfer/setUploadLimit", "transfer/toggleSpeedLimitsMode",
-    "rss/addFolder", "rss/addFeed", "rss/setRule", "rss/renameItem",
-    "rss/removeItem", "rss/moveItem", "rss/markAsRead", "rss/setFeedURL",
+    # rss/addFeed + rss/setRule 能种下会长期自动下载的规则（可写任意目录），
+    # 只在 RSS 文件夹层面操作的几个端点仍然免开关
+    "rss/addFolder", "rss/renameItem",
+    "rss/removeItem", "rss/moveItem", "rss/markAsRead",
 })
 
 
@@ -350,6 +363,16 @@ def tool_api_request(args):
     params = args.get("params") or {}
     if not isinstance(params, dict):
         return _err("参数 params 需为键值对对象")
+
+    # 「对全部任务」的写操作影响面等同于批量操作，即使端点在白名单里也要开关
+    if method == "POST" and not ALLOW_DANGEROUS:
+        hashes = str(params.get("hashes") or "").strip().lower()
+        if hashes == "all":
+            return _err(
+                "对全部任务（hashes=all）的写操作属于高危，当前已被管理员禁用。"
+                "请先开启「允许高危操作」，或改用具体的 hashes 列表。"
+            )
+
     form = urlencode({k: str(v) for k, v in params.items()})
 
     if method == "GET":
@@ -587,9 +610,56 @@ def handle_message(msg):
 # ---------------------------------------------------------------------------
 # HTTP 服务（Streamable HTTP 传输）
 # ---------------------------------------------------------------------------
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """有并发上限的线程服务器。
+
+    默认的 ThreadingHTTPServer 会为每个连接开一个线程且没有上限，
+    几条慢连接就能把线程数打满（真机实测 50 个半行请求 → 51 个线程常驻）。
+    这里给个上限，超出直接 503，宁可拒绝服务也不能被拖死。
+    """
+
+    daemon_threads = True
+    request_queue_size = 64
+    MAX_WORKERS = 32
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._workers = 0
+        self._worker_lock = threading.Lock()
+
+    def process_request(self, request, client_address):
+        with self._worker_lock:
+            if self._workers >= self.MAX_WORKERS:
+                saturated = True
+            else:
+                self._workers += 1
+                saturated = False
+        if saturated:
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\n"
+                                b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            with self._worker_lock:
+                self._workers -= 1
+
+
 class McpHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "qbittorrent-mcp/1.0.0"
+    # 客户端读超时：没有它，只发 Content-Length 不发 body 的几条连接
+    # 就能一直占着工作线程（MCP 对公网可达，属于低成本拒绝服务面）
+    timeout = 15
+    # MCP 请求都是小 JSON：1MB 足够，避免构造超大 body 吃内存
+    MAX_BODY_BYTES = 1024 * 1024
 
     # -- 基础响应 -----------------------------------------------------------
     def _send(self, status, body=None, content_type="application/json", extra=None):
@@ -646,12 +716,27 @@ class McpHandler(BaseHTTPRequestHandler):
 
         auth_err = self._check_auth()
         if auth_err:
+            # 鉴权失败时 body 还没读，必须断开连接：否则残留字节会被
+            # 当作下一个请求解析（HTTP/1.1 连接复用失配）
+            self.close_connection = True
             self._send(401, {"error": auth_err})
             return
 
         try:
             length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            self.close_connection = True
+            self._rpc_error(400, -32700, "Parse error: Content-Length 非法")
+            return
+        if length < 0 or length > self.MAX_BODY_BYTES:
+            self.close_connection = True
+            self._send(413, {"error": "请求体过大"})
+            return
+
+        try:
             raw = self.rfile.read(length) if length else b""
+            if length and len(raw) != length:
+                raise ValueError("incomplete body")
             msg = json.loads(raw.decode("utf-8"))
         except Exception:
             self._rpc_error(400, -32700, "Parse error: 请求体不是合法 JSON")
@@ -707,7 +792,7 @@ def main():
     CONFIG_PATH = args.config
     ALLOW_DANGEROUS = args.allow_dangerous
 
-    server = ThreadingHTTPServer(("0.0.0.0", args.port), McpHandler)
+    server = BoundedThreadingHTTPServer(("0.0.0.0", args.port), McpHandler)
     server.daemon_threads = True
     logging_safe("started: http://0.0.0.0:%d/mcp (webui=%d, config=%s, allow_dangerous=%s)"
                  % (args.port, WEBUI_PORT, CONFIG_PATH, ALLOW_DANGEROUS))

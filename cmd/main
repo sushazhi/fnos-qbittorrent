@@ -17,6 +17,10 @@ PROXY_SCRIPT="${BIN_DIR}/gateway-proxy.py"
 GATEWAY_SOCK="${TRIM_APPDEST}/qbittorrent.sock"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# 公共的 profile 权限 / 实例锁自愈逻辑（upgrade_callback 也用它，保证口径一致）
+# shellcheck source=profile_acl.sh
+. "${SCRIPT_DIR}/profile_acl.sh" 2>/dev/null || true
+
 LOG_MAX_SIZE=1048576
 LOG_MAX_FILES=3
 
@@ -164,43 +168,28 @@ read_qbt_address() {
     [ -n "$addr" ] && WEBUI_ADDRESS="$addr"
 }
 
-# qBittorrent 用 profile 下的 lockfile 做单实例判定。文件存在但内容读不出来时
-# （上一次被 kill -9 留下的死 PID，或 ACL 把属主读权限剥掉），它会认定
-# “已有实例在运行”，启动 1 秒内静默退出，日志里只有一条“终止操作”，
-# 排查时极易误判成端口被占用。走到这里已确认本应用没有实例在跑，
-# 残留锁可以直接删掉，qBittorrent 启动时会重建。
+# 残留实例锁与 profile ACL 的具体修复逻辑放在 cmd/profile_acl.sh，
+# 与升级流程共用同一份实现（升级后不修默认 ACL 正是启动秒退的来源）。
 clean_stale_lockfile() {
+    if declare -F qbt_clean_profile_lock > /dev/null 2>&1; then
+        qbt_clean_profile_lock "$DATA_DIR"
+        return 0
+    fi
     [ -f "$LOCK_FILE" ] || return 0
     local stale_pid=""
-    if [ -r "$LOCK_FILE" ]; then
-        stale_pid=$(head -1 "$LOCK_FILE" 2>/dev/null | tr -cd '0-9')
-    fi
+    [ -r "$LOCK_FILE" ] && stale_pid=$(head -1 "$LOCK_FILE" 2>/dev/null | tr -cd '0-9')
     if [ -n "$stale_pid" ] && ps -p "$stale_pid" > /dev/null 2>&1; then
-        # 持有者进程还活着：可能是并发启动，交给后面的 pgrep 逻辑处理
         echo "提示：实例锁仍被存活进程 ${stale_pid} 持有，暂不清理"
         return 0
     fi
     rm -f "$LOCK_FILE" 2>/dev/null && echo "已清理残留实例锁：$LOCK_FILE"
 }
 
-# 历史遗留的 default:user::--- 会让 profile 目录下新建的文件属主自己都读不了，
-# 典型受害文件就是 lockfile（以及 BT_backup 里新写的 .fastresume）。
-# 这里只修这一项，其余 ACL（group:Users 等 fnOS 授权）原样保留。
 repair_profile_acls() {
-    command -v getfacl > /dev/null 2>&1 || return 0
-    command -v setfacl > /dev/null 2>&1 || return 0
-    local dir
-    for dir in \
-        "${DATA_DIR}/qBittorrent" \
-        "${DATA_DIR}/qBittorrent/config" \
-        "${DATA_DIR}/qBittorrent/data" \
-        "${DATA_DIR}/qBittorrent/data/logs" \
-        "${DATA_DIR}/qBittorrent/data/BT_backup"; do
-        [ -d "$dir" ] || continue
-        if getfacl -p "$dir" 2>/dev/null | grep -q '^default:user::---'; then
-            setfacl -m d:u::rw- "$dir" 2>/dev/null && echo "已修复目录默认 ACL：$dir"
-        fi
-    done
+    if declare -F qbt_repair_profile_acls > /dev/null 2>&1; then
+        qbt_repair_profile_acls "$DATA_DIR"
+    fi
+    return 0
 }
 
 kill_orphan_proxies() {

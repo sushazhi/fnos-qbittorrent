@@ -4,6 +4,17 @@
  */
 
 /**
+ * 代理自有 /api 端点要求带上页面注入的 token（防跨站请求）。
+ * 统一从这里取，避免每个调用点各写一遍。
+ */
+function qbtApiFetch(url, options) {
+  const o = Object.assign({}, options || {});
+  o.headers = Object.assign({ 'X-Qbt-Token': (typeof window !== 'undefined' && window.__qbtToken) || '' }, o.headers || {});
+  return fetch(url, o);
+}
+
+
+/**
  * qBittorrent Update Check - 注入到 WebUI 的更新检测脚本
  *
  * 功能：
@@ -480,7 +491,7 @@
       btn.textContent = '更新中...';
       progressDiv.style.display = 'block';
       try {
-        const res = await fetch('/app/qbittorrent/api/update/install', {method: 'POST'});
+        const res = await qbtApiFetch('/app/qbittorrent/api/update/install', {method: 'POST'});
         const data = await res.json();
         if (!data.success) {
           progressText.textContent = data.error || '启动更新失败';
@@ -497,7 +508,7 @@
       // 轮询进度
       const poll = setInterval(async function() {
         try {
-          const r = await fetch('/app/qbittorrent/api/update/status');
+          const r = await qbtApiFetch('/app/qbittorrent/api/update/status');
           const s = await r.json();
           if (s.updating || s.progress > 0) {
             progressFill.style.width = s.progress + '%';
@@ -563,7 +574,7 @@
     var result = null;
 
     try {
-      const resp = await fetch('/app/qbittorrent/api/update/check', {
+      const resp = await qbtApiFetch('/app/qbittorrent/api/update/check', {
         cache: 'no-store'
       });
       if (resp.ok) {

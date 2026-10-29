@@ -22,19 +22,27 @@ Algorithm (matching qBittorrent 5.x):
 """
 import hashlib
 import base64
+import binascii
+import hmac
 import os
 import sys
+
+# qBittorrent 自己用 100000 轮 PBKDF2-HMAC-SHA512 / 12 字节盐（低于 OWASP 建议的
+# 210k 轮），这里必须保持一致才能与 qBittorrent 互认，不能单方面提高。
+PBKDF2_ITERATIONS = 100000
+SALT_BYTES = 12
+DK_LEN = 64
 
 
 def generate_hash(password: str) -> str:
     """Generate qBittorrent-compatible PBKDF2 password hash."""
-    salt = os.urandom(12)
+    salt = os.urandom(SALT_BYTES)
     dk = hashlib.pbkdf2_hmac(
         'sha512',
         password.encode('utf-8'),
         salt,
-        100000,
-        dklen=64
+        PBKDF2_ITERATIONS,
+        dklen=DK_LEN
     )
     salt_b64 = base64.b64encode(salt).decode('ascii')
     dk_b64 = base64.b64encode(dk).decode('ascii')
@@ -49,19 +57,23 @@ def verify_password(password: str, stored_hash: str) -> bool:
     if ":" not in inner:
         return False
     salt_b64, hash_b64 = inner.split(":", 1)
+    # 严格解码：非 base64 字符/长度不符直接判失败，不靠宽松解码的副作用
     try:
-        salt = base64.b64decode(salt_b64)
-    except Exception:
+        salt = base64.b64decode(salt_b64, validate=True)
+        expected = base64.b64decode(hash_b64, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    if len(salt) != SALT_BYTES or len(expected) != DK_LEN:
         return False
     dk = hashlib.pbkdf2_hmac(
         'sha512',
         password.encode('utf-8'),
         salt,
-        100000,
-        dklen=64
+        PBKDF2_ITERATIONS,
+        dklen=DK_LEN
     )
-    expected_b64 = base64.b64encode(dk).decode('ascii')
-    return hash_b64 == expected_b64
+    # 恒定时间比较：字符串 == 会在首个不同字节处提前返回，可被用来逐字节猜哈希
+    return hmac.compare_digest(dk, expected)
 
 
 if __name__ == '__main__':
@@ -81,7 +93,8 @@ if __name__ == '__main__':
     if len(sys.argv) >= 2 and not sys.argv[1].startswith('--'):
         password = sys.argv[1]
     elif not sys.stdin.isatty():
-        password = sys.stdin.read().strip()
+        # 只去掉行尾换行：strip() 会把用户口令里有意的前后空格、制表符也吞掉
+        password = sys.stdin.read().rstrip("\r\n")
 
     if not password:
         print("Usage:", file=sys.stderr)
