@@ -113,7 +113,14 @@ if [ -f "$CONFIG_FILE" ]; then
 
     # 读取用户当前端口：只在配置里没有端口时才用默认 8080。
     # 历史上这里无条件写死 8080，导致用户自定义端口在覆盖安装时被静默重置。
-    CUR_PORT=$(grep -E "^WebUI\\\\Port=" "$CONFIG_FILE" 2>/dev/null | head -1 | cut -d'=' -f2 | tr -d ' \r\n')
+    # 注意：qBittorrent 自己把端口写在 [WebUI] 段内的 Port=，
+    # 只认 WebUI\Port= 会漏掉用户在 WebUI 里改过的端口。
+    CUR_PORT=$(awk '
+        /^\[/ { in_webui = ($0 == "[WebUI]"); next }
+        in_webui && /^[ \t]*Port=/ { sub(/^[ \t]*Port=/, ""); v = $0; exit }
+        /^[ \t]*WebUI\\Port=/ { sub(/^[ \t]*WebUI\\Port=/, ""); v = $0 }
+        END { if (v != "") print v }
+    ' "$CONFIG_FILE" 2>/dev/null | tr -d ' \r\n')
     case "$CUR_PORT" in
         ''|*[!0-9]*) CUR_PORT=8080 ;;
     esac
@@ -138,6 +145,15 @@ if [ -f "$CONFIG_FILE" ]; then
                 print $0
                 in_pref = 1
                 pref_seen = 1
+                in_webui = 0
+                next
+            }
+            # [WebUI] 是 qBittorrent 原生写法的段：段内键是不带前缀的裸键
+            if ($0 == "[WebUI]") {
+                print $0
+                in_webui = 1
+                webui_seen = 1
+                in_pref = 0
                 next
             }
             # 任何新 section 开始时，先补齐 [BitTorrent] 缺失的保存路径
@@ -145,9 +161,41 @@ if [ -f "$CONFIG_FILE" ]; then
                 print "Session\\DefaultSavePath=" save_path
                 save_written = 1
             }
-            if ($0 ~ /^\[/) { in_bt = 0; in_pref = 0 }
+            if ($0 ~ /^\[/) { in_bt = 0; in_pref = 0; in_webui = 0 }
 
-            # ---- [Preferences] 内的键：逐项处理，保留用户值 ----
+            # ---- [WebUI] 段内的规范键 ----
+            if (in_webui) {
+                if (starts_with($0, "WebUI\\")) {
+                    # 段内的 WebUI\xxx 会被解析成 WebUI\WebUI\xxx，是死键，丢弃
+                    next
+                }
+                if (starts_with($0, "Port=")) {
+                    print "Port=" cur_port
+                    port_done = 1
+                    next
+                }
+                if (starts_with($0, "Address=")) { print $0; addr_done = 1; next }
+                if (starts_with($0, "LocalHostAuth=")) { print $0; lha_done = 1; next }
+                if (starts_with($0, "AlternativeUIEnabled=")) {
+                    print "AlternativeUIEnabled=" alt_ui
+                    alt_done = 1
+                    next
+                }
+                if (starts_with($0, "RootFolder=")) {
+                    if (alt_ui == "true") print "RootFolder=" root
+                    else print $0
+                    root_done = 1
+                    next
+                }
+                if (starts_with($0, "Password_PBKDF2=")) {
+                    if (new_pass != "") print "Password_PBKDF2=" new_pass
+                    else print $0
+                    pass_done = 1
+                    next
+                }
+            }
+
+            # ---- [Preferences] 内的历史遗留键（旧版本写法）：逐项处理，保留用户值 ----
             if (starts_with($0, "WebUI\\Port=")) {
                 # 保留用户端口；从未设置过则补默认值
                 print "WebUI\\Port=" cur_port
@@ -178,15 +226,16 @@ if [ -f "$CONFIG_FILE" ]; then
             print $0
         }
         END {
-            # 只在确实缺少键时补一个 [Preferences] 段；
-            # 若原文件已有该段，把缺失键追加到文件末尾比重复开段更安全
-            if (!port_done || !addr_done || !lha_done || !alt_done) {
-                if (!pref_seen) print "[Preferences]"
-                if (!port_done) print "WebUI\\Port=" cur_port
-                if (!addr_done) print "WebUI\\Address=0.0.0.0"
-                if (!lha_done) print "WebUI\\LocalHostAuth=false"
-                if (!alt_done) print "WebUI\\AlternativeUIEnabled=" alt_ui
-                if (alt_ui == "true" && !root_done && !pref_seen) print "WebUI\\RootFolder=" root
+            # 缺键时必须补在正确的段里：qBittorrent 原生读写 [WebUI] 段的裸键，
+            # 把 WebUI\xxx 直接追加到文件末尾会落进最后一个 section，
+            # 变成 WebUI\WebUI\xxx 这样的死键（历史事故：端口/UI 开关静默失效）。
+            if (!port_done || !addr_done || !lha_done || !alt_done || (alt_ui == "true" && !root_done)) {
+                print "[WebUI]"
+                if (!port_done) print "Port=" cur_port
+                if (!addr_done) print "Address=0.0.0.0"
+                if (!lha_done) print "LocalHostAuth=false"
+                if (!alt_done) print "AlternativeUIEnabled=" alt_ui
+                if (alt_ui == "true" && !root_done) print "RootFolder=" root
             }
             if (!save_written) {
                 print "[BitTorrent]"
@@ -213,11 +262,25 @@ else
     if [ -z "$SHARE_DIR" ]; then
         SHARE_DIR="/vol1/@appshare/qbittorrent"
     fi
+    # 从残留配置里读单个 WebUI 键：同时认 [WebUI] 段内的裸键（qBittorrent 原生写法）
+    # 和历史的 WebUI\xxx 写法。只认后者会漏掉真实凭证，重装后用户密码被随机值顶掉。
+    _read_webui_key() {
+        awk -v k="$2" '
+            function strip(line, prefix) { return substr(line, length(prefix) + 1) }
+            {
+                if ($0 ~ /^\[/) { in_webui = ($0 == "[WebUI]"); next }
+                if (in_webui) { p = k "="; if (index($0, p) == 1) { v = strip($0, p); exit } }
+                p2 = "WebUI\\" k "=";
+                if (index($0, p2) == 1) { v = strip($0, p2) }
+            }
+            END { if (v != "") print v }
+        ' "$1" 2>/dev/null
+    }
     for old_conf in "${DATA_DIR}/qBittorrent/config/qBittorrent.conf" \
                      "${SHARE_DIR}/.data_backup/qBittorrent/config/qBittorrent.conf"; do
         if [ -f "$old_conf" ]; then
-            OLD_USER=$(grep "^WebUI\\\\Username=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Username=//')
-            OLD_PASS=$(grep "^WebUI\\\\Password_PBKDF2=" "$old_conf" 2>/dev/null | head -1 | sed 's/WebUI\\Password_PBKDF2=//')
+            OLD_USER=$(_read_webui_key "$old_conf" "Username")
+            OLD_PASS=$(_read_webui_key "$old_conf" "Password_PBKDF2")
             if [ -n "$OLD_USER" ] && [ -n "$OLD_PASS" ]; then
                 echo "保留已有凭证（用户名: $OLD_USER）"
                 break

@@ -55,10 +55,24 @@ WEBUI_PORT = 8080
 CONFIG_PATH = None
 ALLOW_DANGEROUS = False
 
-# 配置文件键（qBittorrent 5.2 Web API Key，兼容两种历史键名）
-_RE_API_KEY = re.compile(
-    r'^WebUI\\(?:WebAPIKey|APIKey)=(.+)$', re.MULTILINE
-)
+# 配置文件键（qBittorrent Web API Key）。
+# qBittorrent 5.x 把键写在 [WebUI] 段内且不带前缀（APIKey=xxx），
+# 旧版本与安装脚本写过 WebUI\APIKey= 的形式，两种都必须认：
+# 只认 WebUI\ 前缀会读不到真实 Key，鉴权恒失败，对外表现为 401。
+_RE_WEBUI_SECTION = re.compile(r'^\[WebUI\][ \t]*$(.*?)(?=^\[|\Z)', re.MULTILINE | re.DOTALL)
+_RE_SECTION_API_KEY = re.compile(r'^[ \t]*(?:WebAPIKey|APIKey)=(.+)$', re.MULTILINE)
+_RE_API_KEY_LEGACY = re.compile(r'^[ \t]*WebUI\\(?:WebAPIKey|APIKey)=(.+)$', re.MULTILINE)
+
+
+def parse_config_api_key(text):
+    """从 qBittorrent.conf 文本解析 Web API Key；解析不到返回空串。"""
+    section = _RE_WEBUI_SECTION.search(text)
+    if section:
+        m = _RE_SECTION_API_KEY.search(section.group(1))
+        if m:
+            return m.group(1).strip()
+    m = _RE_API_KEY_LEGACY.search(text)
+    return m.group(1).strip() if m else ""
 
 _key_cache = {"key": None, "mtime": -1.0}
 _key_lock = threading.Lock()
@@ -85,9 +99,7 @@ def get_api_key():
         key = ""
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8", errors="replace") as f:
-                m = _RE_API_KEY.search(f.read())
-            if m:
-                key = m.group(1).strip()
+                key = parse_config_api_key(f.read())
         except Exception:
             key = ""
         _key_cache["key"] = key
